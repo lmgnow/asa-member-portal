@@ -141,7 +141,7 @@ class ASA_Member_Portal {
 			$member_types = array( array( 'name' => $this->get_default_member_type_name() ) );
 		}
 		foreach ( $member_types as $member_type ) {
-			$role = 'asamp' . '_' . sanitize_key( $member_type[ 'name' ] );
+			$role = 'asamp_' . sanitize_key( $member_type[ 'name' ] );
 			$result = add_role( $role, $member_type[ 'name' ], array( 'read' ) );
 		}
 	}
@@ -154,7 +154,7 @@ class ASA_Member_Portal {
 	private function delete_roles() {
 		$roles = get_editable_roles();
 		foreach ( $roles as $k => $v ) {
-			if ( false !== strpos( $k, 'asamp' . '_' ) ) {
+			if ( false !== strpos( $k, 'asamp_' ) ) {
 				remove_role( $k );
 			}
 		}
@@ -172,7 +172,7 @@ class ASA_Member_Portal {
 		$this->user = get_userdata( $user_id );
 		$roles = ( array ) $this->user->roles;
 		foreach ( $roles as $role ) {
-			if ( false !== strpos( $role, 'asamp' . '_' ) ) {
+			if ( false !== strpos( $role, 'asamp_' ) ) {
 				update_user_option( $user_id, 'show_admin_bar_front', 'false' );
 			}
 		}
@@ -221,7 +221,9 @@ class ASA_Member_Portal {
 	/**
 	 * Generates a member status widget or a login form if not logged in.
 	 *
-	 * @return function asamp_render_login_box()
+	 * @param array $atts
+	 *
+	 * @return str $output
 	 */
 	public function shortcode_asamp_member_login_box( $atts = array() ) {
 		$output = '';
@@ -247,9 +249,9 @@ class ASA_Member_Portal {
 			) );
 			$cmb->add_hidden_field( array(
 				'field_args'  => array(
-					'id'      => $prefix . '_nonce',
+					'id'      => $prefix . 'nonce',
 					'type'    => 'hidden',
-					'default' => wp_create_nonce( $prefix . '_nonce' ),
+					'default' => wp_create_nonce( $prefix . 'nonce' ),
 				),
 			) );
 
@@ -297,7 +299,7 @@ class ASA_Member_Portal {
 		if ( is_user_logged_in() ) {
 			$roles = ( array ) $this->user()->roles;
 			foreach ( $roles as $role ) {
-				if ( false !== strpos( $role, 'asamp' . '_' ) ) {
+				if ( false !== strpos( $role, 'asamp_' ) ) {
 					return $this->is_member = true;
 				}
 			}
@@ -403,7 +405,31 @@ class ASA_Member_Portal {
 		$prefix = 'asamp_login_';
 		if ( ! $this->verify_cmb_form( $prefix . 'nonce' ) ) return false;
 
+		$cmb = cmb2_get_metabox( $prefix . 'form' );
 
+		if ( ! isset( $_POST[ $cmb->nonce() ] ) || ! wp_verify_nonce( $_POST[ $cmb->nonce() ], $cmb->nonce() ) ) {
+			return $cmb->prop( 'submission_error', new WP_Error( 'security_fail', __( 'Security check failed.', 'asamp' ) ) );
+		}
+
+		$sanitized_values = $cmb->get_sanitized_values( $_POST );
+
+		/*$creds = array(
+			'user_login'    => ,
+			'user_password' => $sanitized_values[ $prefix . 'password' ],
+			'remember'      => true,
+		);
+
+		if (
+			$the_member = get_user_by( 'email', $sanitized_values[ $prefix . 'username' ] ) ||
+			$the_member = get_user_by( 'login', $sanitized_values[ $prefix . 'username' ] )
+		) {
+			wp_signon( array(
+				'user_login'    => $sanitized_values[ $prefix . 'username' ],
+				'user_password' => $sanitized_values[ $prefix . 'password' ],
+			), true );
+		} else {
+
+		}*/
 	}
 
 	/**
@@ -444,7 +470,11 @@ class ASA_Member_Portal {
 
 			$user_id = wp_insert_user( $userdata );
 
-			wp_signon( array( 'user_login' => $userdata[ 'user_login' ], 'user_password' => $userdata[ 'user_pass' ] ), true );
+			wp_signon( array(
+				'user_login'    => $userdata[ 'user_login' ],
+				'user_password' => $userdata[ 'user_pass' ],
+				'remember'      => false,
+			), true );
 		}
 
 		// If there is a snag, inform the user.
@@ -491,7 +521,7 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * Adds tabs on the options page.
+	 * Adds tabs to the plugin options page.
 	 *
 	 * @return array $tabs
 	 */
@@ -520,7 +550,7 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * Adds options.
+	 * Adds plugin options.
 	 *
 	 * @return null
 	 */
@@ -643,6 +673,8 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Adds boxes to plugin options.
+	 *
 	 * This is typical CMB2, but note two crucial extra items:
 	 * - the ['show_on'] property is configured
 	 * - a call to object_type method
@@ -1150,7 +1182,7 @@ class ASA_Member_Portal {
 					}
 					$output = array();
 					foreach ( $member_types as $member_type ) {
-						$output[ 'asamp' . '_' . sanitize_key( $member_type[ 'name' ] ) ] = $member_type[ 'name' ] . ' (Dues: $' . $member_type[ 'dues' ] . '/Year)';
+						$output[ 'asamp_' . sanitize_key( $member_type[ 'name' ] ) ] = $member_type[ 'name' ] . ' (Dues: $' . $member_type[ 'dues' ] . '/Year)';
 					}
 
 					return $output;
