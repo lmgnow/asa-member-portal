@@ -1,0 +1,15 @@
+.asamp-validation-error {
+	border-color: #f00 !important;
+}
+
+.asamp-validation-error-message {
+	background-color: pink;
+	padding: 0.6em;
+	margin: 0;
+	max-width: 400px;
+}
+
+.asamp-validation-error-message ul {
+	padding-top: 1em;
+	padding-left: 2em;
+}

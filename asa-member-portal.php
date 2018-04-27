@@ -19,18 +19,20 @@ use Omnipay\Omnipay;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $plugin_file_path = null; // string          (with trailing slash) Absolute path to this file.
-	private $plugin_dir_path  = null; // string          (with trailing slash) Absolute path to this directory.
-	private $plugin_dir_url   = null; // string          (with trailing slash) URL of this directory.
-	private $plugin_data      = null; // array
-	private $options          = null; // array           CMB2 options for this plugin.
-	private $user             = null; // WP_User object  Current logged in user.
-	private $is_member        = null; // bool            True if $this->user is a member.
+	private $plugin_file_path = null;  // string          (with trailing slash) Absolute path to this file.
+	private $plugin_dir_path  = null;  // string          (with trailing slash) Absolute path to this directory.
+	private $plugin_dir_url   = null;  // string          (with trailing slash) URL of this directory.
+	private $plugin_data      = null;  // array
+	private $options          = null;  // array           CMB2 options for this plugin.
+	private $user             = null;  // WP_User object  Current logged in user.
+	private $user_meta        = null;  // object          Current logged in user's user_meta data.
+	private $is_member        = null;  // bool            true if $this->user is a member.
+	private $fieldset_open    = false; // bool            true if fieldset is already open.
 
 	/**
 	 * Constructs object.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function __construct() {
 		$this->plugin_file_path = __FILE__;
@@ -40,8 +42,6 @@ class ASA_Member_Portal {
 		require_once $this->plugin_dir_path . 'includes/vendor/autoload.php';
 		require_once $this->plugin_dir_path . 'includes/vendor/webdevstudios/cmb2/init.php';
 		require_once $this->plugin_dir_path . 'includes/vendor/rogerlos/cmb2-metatabs-options/cmb2_metatabs_options.php';
-		require_once $this->plugin_dir_path . 'html.php';
-		require_once $this->plugin_dir_path . 'test.php';
 
 		//require_once $this->plugin_dir_path . 'includes/pallazzio-wordpress-github-updater/pallazzio-wordpress-github-updater.php';
 		//new Pallazzio_WordPress_GitHub_Updater( $this->plugin_dir_path . wp_basename( $this->plugin_file_path ), 'pallazzio' );
@@ -51,6 +51,7 @@ class ASA_Member_Portal {
 		register_activation_hook(   $this->plugin_file_path, array( $this, 'activate'   ) );
 		register_deactivation_hook( $this->plugin_file_path, array( $this, 'deactivate' ) );
 
+		add_action( 'wp_enqueue_scripts',    array( $this, 'asamp_enqueue' )        );
 		add_action( 'admin_enqueue_scripts', array( $this, 'admin_enqueue' ), 10, 1 );
 
 		add_action(    'add_option_asa_member_portal', array( $this, 'create_roles'  ), 10, 2 );
@@ -63,13 +64,18 @@ class ASA_Member_Portal {
 		add_action( 'save_post_dues_payment', array( $this, 'dues_payment_save' ), 10, 3 );
 
 		add_action( 'cmb2_init',       array( $this, 'user_meta_init'        ) );
+		add_action( 'cmb2_init',       array( $this, 'payment_form_init'     ) );
+		add_action( 'cmb2_init',       array( $this, 'login_form_init'       ) );
 		add_action( 'cmb2_init',       array( $this, 'dues_payments_init'    ) );
 		add_action( 'cmb2_admin_init', array( $this, 'options_init'          ) );
 		add_action( 'cmb2_after_init', array( $this, 'frontend_user_profile' ) );
 		add_action( 'cmb2_after_init', array( $this, 'frontend_user_login'   ) );
+		add_action( 'cmb2_after_init', array( $this, 'frontend_dues_payment' ) );
 
-		add_action( 'init', array( $this, 'register_post_types' ) );
-		add_action( 'init', array( $this, 'register_shortcodes' ) );
+		add_action( 'init', array( $this, 'disallow_dashboard_access' ) );
+		add_action( 'init', array( $this, 'get_this_plugin_data'      ) );
+		add_action( 'init', array( $this, 'register_post_types'       ) );
+		add_action( 'init', array( $this, 'register_shortcodes'       ) );
 
 		add_filter( 'plugin_action_links_' . plugin_basename( $this->plugin_file_path ), array( $this, 'add_settings_link' ), 10, 1 );
 	}
@@ -77,7 +83,7 @@ class ASA_Member_Portal {
 	/**
 	 * Sets up initial plugin settings, data, etc.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function activate() {
 		$this->create_roles( 'asa_member_portal', array( array( 'name' => $this->get_default_member_type_name() ) ) );
@@ -86,10 +92,29 @@ class ASA_Member_Portal {
 	/**
 	 * Deletes plugin settings, data, etc.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function deactivate() {
 		$this->delete_roles();
+	}
+
+	/**
+	 * Puts plugin data in a property for use throughout the class.
+	 *
+	 * @return void
+	 */
+	public function get_this_plugin_data() {
+		$this->plugin_data = get_plugin_data( $this->plugin_file_path );
+	}
+
+	/**
+	 * Loads frontend scripts and stylesheets.
+	 *
+	 * @return void
+	 */
+	public function asamp_enqueue() {
+		wp_enqueue_style(  'asamp_style',  $this->plugin_dir_url . 'css/asamp-style.css', array(), $this->plugin_data[ 'Version' ], 'screen' );
+		wp_enqueue_script( 'asamp_script', $this->plugin_dir_url .  'js/asamp-script.js', array(), $this->plugin_data[ 'Version' ], true     );
 	}
 
 	/**
@@ -97,11 +122,10 @@ class ASA_Member_Portal {
 	 *
 	 * @param string $hook
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function admin_enqueue( $hook ) {
-		$this->plugin_data = get_plugin_data( $this->plugin_file_path );
-		$hooks = array( 'dues_payment_page_asa_member_portal', 'user-new.php', 'profile.php' );
+		$hooks = array( 'settings_page_asa_member_portal', 'user-new.php', 'profile.php' );
 		foreach ( $hooks as $v ) {
 			if ( $v === $hook ) {
 				wp_enqueue_style(  'asamp_admin_style',  $this->plugin_dir_url . 'css/asamp-admin-style.css', array(), $this->plugin_data[ 'Version' ], 'screen' );
@@ -124,12 +148,25 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Redirects members who try to visit the admin dashboard.
+	 *
+	 * @return void
+	 */
+	public function disallow_dashboard_access() {
+		if ( is_admin() && $this->is_member() && in_array( $this->user()->roles[ 0 ], array_keys( $this->get_asamp_roles() ) ) ) {
+			$pp = ! empty( $this->options[ 'page_profile' ] ) ? get_the_permalink( $this->options[ 'page_profile' ] ) : home_url();
+			wp_redirect( $pp );
+			exit();
+		}
+	}
+
+	/**
 	 * Adds/updates roles.
 	 *
 	 * @param string $option_name
 	 * @param mixed  $option_value
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function create_roles( $option_name = null, $option_value = null ) {
 		$this->delete_roles();
@@ -149,15 +186,50 @@ class ASA_Member_Portal {
 	/**
 	 * Deletes roles.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	private function delete_roles() {
+		$roles = $this->get_asamp_roles();
+		foreach ( $roles as $k => $v ) {
+			remove_role( $k );
+		}
+	}
+
+	/**
+	 * Returns an array of the roles created by this plugin.
+	 *
+	 * @return array $roles
+	 */
+	private function get_asamp_roles() {
 		$roles = get_editable_roles();
 		foreach ( $roles as $k => $v ) {
-			if ( false !== strpos( $k, 'asamp_' ) ) {
-				remove_role( $k );
+			if ( false === strpos( $k, 'asamp_' ) ) {
+				unset( $roles[ $k ] );
 			}
 		}
+
+		return $roles;
+	}
+
+	/**
+	 * Returns an associative array of the roles created by this plugin.
+	 * Includes slug, label, and price. To be used in a select field on the frontend.
+	 *
+	 * @return array $roles
+	 */
+	private function get_asamp_role_select() {
+		if ( ! empty( $this->options[ 'member_types' ] ) ) {
+			$member_types = $this->options[ 'member_types' ];
+		} else {
+			$member_types = array( array( 'name' => $this->get_default_member_type_name() ) );
+		}
+		$roles = array();
+		foreach ( $member_types as $member_type ) {
+			$str = sprintf( __( '(Dues: $%s/Year)', 'asamp' ), $member_type[ 'dues' ] );
+			$roles[ 'asamp_' . sanitize_key( $member_type[ 'name' ] ) ] = $member_type[ 'name' ] . ' ' . $str;
+		}
+
+		return $roles;
 	}
 
 	/**
@@ -166,7 +238,7 @@ class ASA_Member_Portal {
 	 * @param int            $user_id
 	 * @param WP_User object $old_user_data
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function set_user_options( $user_id ) {
 		$this->user = get_userdata( $user_id );
@@ -181,7 +253,7 @@ class ASA_Member_Portal {
 	/**
 	 * Registers shortcodes.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function register_shortcodes() {
 		add_shortcode( 'asamp_member_profile',      array( $this, 'shortcode_asamp_member_profile'      ) );
@@ -198,12 +270,13 @@ class ASA_Member_Portal {
 	 * @return string $output
 	 */
 	public function shortcode_asamp_member_profile( $atts = array() ) {
-		$cmb = cmb2_get_metabox( 'asamp_user_edit', $this->user()->ID );
+		$form_id = 'asamp_user_edit';
+		$cmb = cmb2_get_metabox( $form_id, $this->user()->ID );
 
 		$output = '';
 
 		if ( ( $error = $cmb->prop( 'submission_error' ) ) && is_wp_error( $error ) ) {
-			$output .= '<h3>' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>'. $error->get_error_message() .'</strong>' ) . '</h3>';
+			$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>'. $error->get_error_message() .'</strong>' ) . '</div>';
 		}
 		
 		if ( 'true' === $_GET[ 'member_updated' ] ) {
@@ -214,6 +287,27 @@ class ASA_Member_Portal {
 		$form_config[ 'save_button' ] = $this->is_member() ? __( 'Update Profile', 'asamp' ) : __( 'Join Now', 'asamp' );
 
 		$output .= cmb2_get_metabox_form( $cmb, $this->user()->ID, $form_config );
+
+		if ( $validation_errors = $cmb->prop( 'validation_errors' ) ) {
+			ob_start();
+			?>
+				<script>
+					(function($){
+						"use strict";
+						$(document).ready(function(){
+							var asampMPVE = <?php echo json_encode( $validation_errors ); ?>;
+							$.each(asampMPVE, function(key, data){
+								$('form#<?php echo $form_id; ?> #'+key).addClass('asamp-validation-error').after('<div class="asamp-validation-error-message alert alert-danger">'+data+'</div>');
+							});
+							$('form#<?php echo $form_id; ?>').on('click', '.asamp-validation-error', function(){
+								$(this).removeClass('asamp-validation-error');
+							});
+						});
+					})(jQuery);
+				</script>
+			<?php
+			$output .= ob_get_clean();
+		}
 
 		return $output;
 	}
@@ -226,36 +320,36 @@ class ASA_Member_Portal {
 	 * @return str $output
 	 */
 	public function shortcode_asamp_member_login_box( $atts = array() ) {
+		$prefix = 'asamp_login_';
 		$output = '';
-		if ( $this->is_member() ) {
-			$output .= __( 'Welcome', 'asamp' );
-		} else {
-			$prefix = 'asamp_login_';
-			$cmb = new_cmb2_box( array(
-				'id'           => $prefix . 'form',
-				'object_types' => array( 'post' ),
-				'hookup'       => false,
-				'save_fields'  => false,
-			) );
-			$cmb->add_field( array(
-				'name' => __( 'Username / Email', 'asamp' ),
-				'id'   => $prefix . 'username',
-				'type' => 'text',
-			) );
-			$cmb->add_field( array(
-				'name' => __( 'Password', 'asamp' ),
-				'id'   => $prefix . 'password',
-				'type' => 'text',
-			) );
-			$cmb->add_hidden_field( array(
-				'field_args'  => array(
-					'id'      => $prefix . 'nonce',
-					'type'    => 'hidden',
-					'default' => wp_create_nonce( $prefix . 'nonce' ),
-				),
-			) );
 
-			$output .= cmb2_get_metabox_form( $prefix . 'form', '', array( 'save_button' => __( 'Sign In', 'asamp' ) ) );
+		if ( $this->is_member() ) {
+			$output .= '<p>' . __( 'Welcome', 'asamp' ) . ' ' . $this->user_meta()->asamp_user_company_name . '</p>';
+
+			$status = $this->user_meta()->asamp_user_member_status;
+			if ( 'active' !== $status ) {
+				$output .= '<div class="alert alert-danger">' . __( 'ASA Membership Inactive', 'asamp' ) . '</div>';
+				$output .= ! empty( $ppf = $this->options[ 'page_payment_form' ] ) ? '<a class="btn btn-success button button-success" href="' . get_the_permalink( $ppf ) . '">' . __( 'Activate Now', 'asamp' ) . '</a>' : '';
+			}
+
+			$output .= ! empty( $pp = $this->options[ 'page_profile' ] ) ? '<a class="btn btn-primary button button-primary" href="' . get_the_permalink( $pp ) . '">' . __( 'Manage Profile', 'asamp' ) . '</a>' : '';
+
+			global $wp;
+			$output .= '<a class="btn btn-danger button button-danger" href="' . wp_logout_url( add_query_arg( 'member_logged_out', 'true', home_url( '/' ) . $wp->request ) ) . '">' . __( 'Log Out', 'asamp' ) . '</a>';
+		} else {
+			$cmb = cmb2_get_metabox( $prefix . 'form' );
+
+			if ( ( $error = $cmb->prop( 'submission_error' ) ) && is_wp_error( $error ) ) {
+				$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>' . $error->get_error_message() . '</strong>' ) . '</div>';
+			}
+
+			if ( 'true' === $_GET[ 'member_logged_out' ] ) {
+				$output .= '<div class="alert alert-info">' . __( 'You have been logged out.', 'asamp' ) . '</div>';
+			}
+
+			$output .= cmb2_get_metabox_form( $cmb, '', array( 'save_button' => __( 'Sign In', 'asamp' ) ) );
+
+			$output .= ! empty( $pp = $this->options[ 'page_profile' ] ) ? '<a class="btn btn-success button button-success" href="' . get_the_permalink( $pp ) . '">' . __( 'Register', 'asamp' ) . '</a>' : '';
 		}
 
 		return $output;
@@ -264,37 +358,156 @@ class ASA_Member_Portal {
 	/**
 	 * Generates a payment form.
 	 *
-	 * @return function asamp_render_payment_form()
+	 * @return str $output
 	 */
 	public function shortcode_asamp_member_payment_form( $atts = array() ) {
-		$args = array();
-		if ( $this->is_member() ) {
-			$args[ 'member_id' ] = $this->user()->ID;
+		$prefix = 'asamp_payment_';
+		$output = '';
+
+		//$output .= '<pre>' . print_r( get_editable_roles(), true ) . '</pre>';
+		//$output .= '<pre>' . print_r( $this->options, true ) . '</pre>';
+
+		$cmb = cmb2_get_metabox( $prefix . 'form' );
+
+		if ( ( $error = $cmb->prop( 'submission_error' ) ) ) {
+			$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>' . $error . '</strong>' ) . '</div>';
 		}
-		return asamp_render_payment_form( $args );
+
+		$output .= cmb2_get_metabox_form( $cmb, '', array( 'save_button' => __( 'Submit Payment', 'asamp' ) ) );
+
+		return $output;
 	}
 
 	/**
 	 * Generates a member directory.
 	 *
-	 * @return function asamp_render_directory()
+	 * @return str $output
 	 */
 	public function shortcode_asamp_member_directory( $atts = array() ) {
-		$args = array();
-		if ( $this->is_member() ) {
-			$args[ 'member_id' ] = $this->user()->ID;
-		}
+		$output = '';
+		$args = array(
+			'role__in'   => array_keys( $this->get_asamp_roles() ),
+			'meta_key'   => 'asamp_user_member_status',
+			'meta_value' => 'active',
+		);
+		$user_query = new WP_User_Query( $args );
 
-		return asamp_render_directory( $args );
+		//$output .= '<pre>' . print_r( $user_query, true ) . '</pre>';
+		$show = $this->options[ 'profiles_public' ];
+
+		if ( 'none' === $show && ! $this->is_member() )     return __( 'Please log in or register. Only members can see info about other members.', 'asamp' );
+		if ( empty( $users = $user_query->get_results() ) ) return __( 'No active members found.', 'asamp' );
+
+		$show = $this->is_member() ? 'all' : $show;
+
+		ob_start();
+		?>
+			<ul class="asamp-dir">
+				<?php foreach ( $users as $user ) : ?>
+					<?php $meta = $this->flatten_array( get_user_meta( $user->ID ) ); ?>
+					<li class="asamp-member">
+						<h3 class="asamp-company-name"><?php echo $meta[ 'asamp_user_company_name' ]; ?></h3>
+						<?php if ( 'all' === $show ) : ?>
+							<p><a href="<?php echo $meta[ 'asamp_user_company_website' ]; ?>" target="_blank" rel="noopener"><?php echo $meta[ 'asamp_user_company_website' ]; ?></a></p>
+						<?php endif; ?>
+						<p><?php echo $meta[ 'asamp_user_company_description' ]; ?></p>
+						<p>
+							<?php
+								$business_types = maybe_unserialize( $meta[ 'asamp_user_company_business_type' ] );
+								if ( is_array( $business_types ) ) {
+									$str = '';
+									foreach ( $business_types as $type ) {
+										$str .= $type . ', ';
+									}
+									$business_types = rtrim( $str, ', ' );
+								}
+								echo $business_types;
+							?>
+						</p>
+						<?php if ( 'all' === $show ) : ?>
+							
+							<p><a href="tel:<?php echo $meta[ 'asamp_user_company_phone' ]; ?>"><?php echo $meta[ 'asamp_user_company_phone' ]; ?></a></p>
+							<p><a href="mailto:<?php echo $meta[ 'asamp_user_company_email' ]; ?>"><?php echo $meta[ 'asamp_user_company_email' ]; ?></a></p>
+							<address>
+								<?php echo $meta[ 'asamp_user_company_street' ]; ?> <br />
+								<?php echo $meta[ 'asamp_user_company_city' ] . ', ' . $meta[ 'asamp_user_company_state' ] . ' ' . $meta[ 'asamp_user_company_zip' ]; ?>
+							</address>
+
+							<?php $contacts = maybe_unserialize( $meta[ 'asamp_user_company_contacts' ] ); ?>
+							<?php if ( is_array( $contacts ) ) : ?>
+								<ol class="asamp-contacts">
+									<?php foreach ( $contacts as $contact ) : ?>
+										<li class="asamp-contact">
+											<h4><?php echo $contact[ 'name_first' ] . ' ' . $contact[ 'name_last' ]; ?></h4>
+											<p><a href="tel:<?php echo $contact[ 'phone' ]; ?>"><?php echo $contact[ 'phone' ]; ?></a></p>
+											<p><?php echo $contact[ 'fax' ]; ?></p>
+											<p><a href="mailto:<?php echo $contact[ 'email' ]; ?>"><?php echo $contact[ 'email' ]; ?></a></p>
+											<p><?php echo $contact[ 'title' ]; ?></p>
+											<p><?php echo $contact[ 'asa_position' ]; ?></p>
+										</li><!-- /.asamp-contact -->
+									<?php endforeach; ?>
+								</ol><!-- /.asamp-contacts -->
+							<?php endif; ?>
+
+						<?php endif; ?>
+					</li><!-- /.asamp-member -->
+				<?php endforeach; ?>
+			</ul><!-- /.asamp-dir -->
+		<?php
+		$output .= ob_get_clean();
+
+		return $output;
+	}
+
+	/**
+	 * Generates HTML to open a fieldset element in a CMB2 form.
+	 * For use on field of type: 'title'.
+	 *
+	 * @param bool $field_args
+	 * @param bool $field
+	 *
+	 * @return void
+	 */
+	public function open_fieldset( $field_args, $field ) {
+		if ( $this->fieldset_open ) echo '</fieldset>'; $this->fieldset_open = true;
+		echo '<fieldset><legend>' . $field->args( 'name' ) . '</legend>';
+	}
+
+	/**
+	 * Closes a fieldset.
+	 * For use on field of type: 'title'.
+	 *
+	 * @param bool $field_args
+	 * @param bool $field
+	 *
+	 * @return void
+	 */
+	public function close_fieldset( $field_args, $field ) {
+		echo '</fieldset>';
+	}
+
+	/**
+	 * Generates HTML to render a main header as part of a CMB2 form.
+	 * For use on field of type: 'title'.
+	 *
+	 * @param bool $field_args
+	 * @param bool $field
+	 *
+	 * @return void
+	 */
+	public function form_heading( $field_args, $field ) {
+		echo '<h2>' . $field->args( 'name' ) . '</h2>';
 	}
 
 	/**
 	 * Checks to see if the current user is a member.
 	 *
+	 * @param bool $force_check
+	 *
 	 * @return bool
 	 */
-	public function is_member() {
-		if ( is_bool( $this->is_member ) ) return $this->is_member;
+	public function is_member( $force_check = false ) {
+		if ( is_bool( $this->is_member ) && ! $force_check ) return $this->is_member;
 
 		if ( is_user_logged_in() ) {
 			$roles = ( array ) $this->user()->roles;
@@ -320,7 +533,40 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * Builds an array of US State abbreviations and names.
+	 * Returns the current logged in user's user_meta data.
+	 *
+	 * @return object $this->user_meta
+	 */
+	public function user_meta() {
+		if ( is_object( $this->user_meta ) || ! is_user_logged_in() ) return $this->user_meta;
+
+		$user_meta = get_user_meta( $this->user()->ID );
+
+		$user_meta = $this->flatten_array( $user_meta );
+
+		return $this->user_meta = (object) $user_meta;
+	}
+
+	/**
+	 * Converts an array of arrays to a flat array.
+	 * Only applies to array elements whose value is an array with a single element.
+	 *
+	 * @param array $r
+	 *
+	 * @return array $r
+	 */
+	public function flatten_array( $r ) {
+		foreach ( $r as $k => $v ) {
+			if ( is_array( $v ) && 1 === count( $v ) ) {
+				$r[ $k ] = $v[ 0 ];
+			}
+		}
+
+		return $r;
+	}
+
+	/**
+	 * Returns an associative array of US State abbreviations and names.
 	 *
 	 * @param string $default
 	 *
@@ -330,6 +576,78 @@ class ASA_Member_Portal {
 		$r = array( 'AL' => 'Alabama', 'AK' => 'Alaska', 'AS' => 'American Samoa', 'AZ' => 'Arizona', 'AR' => 'Arkansas', 'CA' => 'California', 'CO' => 'Colorado', 'CT' => 'Connecticut', 'DE' => 'Delaware', 'DC' => 'District of Columbia', 'FL' => 'Florida', 'GA' => 'Georgia', 'HI' => 'Hawaii', 'ID' => 'Idaho', 'IL' => 'Illinois', 'IN' => 'Indiana', 'IA' => 'Iowa', 'KS' => 'Kansas', 'KY' => 'Kentucky', 'LA' => 'Louisiana', 'ME' => 'Maine', 'MD' => 'Maryland', 'MA' => 'Massachusets', 'MI' => 'Michigan', 'MN' => 'Minnesota', 'MS' => 'Mississippi', 'MO' => 'Missouri', 'MT' => 'Montana', 'NE' => 'Nebraska', 'NV' => 'Nevada', 'NH' => 'New Hampshire', 'NJ' => 'New Jersey', 'NM' => 'New Mexico', 'NY' => 'New York', 'NC' => 'North Carolina', 'ND' => 'North Dakota', 'OH' => 'Ohio', 'OK' => 'Oklahoma', 'OR' => 'Oregon', 'PA' => 'Pennsylvania', 'PR' => 'Puerto Rico', 'RI' => 'Rhode Island', 'SC' => 'South Carolina', 'SD' => 'South Dakota', 'TN' => 'Tennessee', 'TX' => 'Texas', 'UT' => 'Utah', 'VT' => 'Vermont', 'VA' => 'Virginia', 'WA' => 'Washington', 'WV' => 'West Vitginia', 'WI' => 'Wisconsin', 'WY' => 'Wyoming' );
 		if ( isset( $default ) && array_key_exists( $default, $r ) ) {
 			$r = array( $default => $r[ $default ] ) + $r;
+		}
+
+		return $r;
+	}
+
+	/**
+	 * Returns an associative array of month numbers and names.
+	 *
+	 * @param int $start_month
+	 *
+	 * @return array $r
+	 */
+	public function get_months_array( $start_month = null ) {
+		$r = array( '01' => '01 - January', '02' => '02 - February', '03' => '03 - March', '04' => '04 - April', '05' => '05 - May', '06' => '06 - June', '07' => '07 - July', '08' => '08 - August', '09' => '09 - September', '10' => '10 - October', '11' => '11 - November', '12' => '12 - December' );
+
+		$start_month = absint( $start_month );
+		if ( 0 < $start_month && 13 > $start_month ) {
+			$i = array_search( $start_month, array_keys( $r ) );
+			$s = array_slice( $r, $i );
+			$t = array_slice( 0, $i );
+
+			$r = array_merge( $s, $t );
+		}
+
+		return $r;
+	}
+
+	/**
+	 * Returns an associative array of year numbers.
+	 *
+	 * @param int $start_year
+	 * @param int $end_year optional
+	 *
+	 * @return array $r
+	 */
+	public function get_years_array( $start_year, $end_year = null ) {
+		$start_year = absint( $start_year );
+		$end_year   = isset( $end_year ) ? absint( $end_year ) : date( 'Y' );
+
+		$r = range( $start_year, $end_year );
+
+		$r = array_combine( $r, $r );
+
+		return $r;
+	}
+
+	/**
+	 * Returns an associative array of pages or posts.
+	 *
+	 * @param str $post_type
+	 * @param int $parent Post ID.
+	 * @param int $indent
+	 *
+	 * @return array $r
+	 */
+	public function get_pages_array( $post_type = 'page', $parent = 0, $indent = 0 ) {
+		$r = array();
+		$pages = get_pages( array(
+			'post_type' => $post_type,
+			'parent'    => $parent,
+		) );
+		if ( empty( $pages ) ) return $r;
+
+		foreach ( $pages as $page ) {
+			$r[ $page->ID ] = ' ' . str_pad( '', $indent, '-' ) . $page->post_title;
+
+			$s = $this->get_pages_array( $post_type, $page->ID, $indent + 1 );
+			if ( is_array( $s ) ) {
+				foreach ( $s as $k => $v ) {
+					$r[ $k ] = $v;
+				}
+			}
 		}
 
 		return $r;
@@ -397,6 +715,86 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Handles dues payment form submission and payment processing.
+	 *
+	 * @return void
+	 */
+	public function frontend_dues_payment() {
+		$prefix = 'asamp_payment_';
+		if ( ! $this->verify_cmb_form( $prefix . 'nonce' ) ) return false;
+
+		$cmb = cmb2_get_metabox( $prefix . 'form' );
+
+		if ( ! isset( $_POST[ $cmb->nonce() ] ) || ! wp_verify_nonce( $_POST[ $cmb->nonce() ], $cmb->nonce() ) ) {
+			return $cmb->prop( 'submission_error', new WP_Error( 'security_fail', __( 'Security check failed.', 'asamp' ) ) );
+		}
+
+		$sanitized_values = $cmb->get_sanitized_values( $_POST );
+
+		foreach ( $this->options as $k => $v ) {
+			if ( 0 === strpos( $k, 'payment_' ) && false !== strpos( $k, '_enabled' ) && $v === 'yes' ) {
+				$payment_processor = str_replace( '_enabled', '', $k );
+				break;
+			}
+		}
+
+		$gateway_init = array();
+		foreach ( $this->options as $k => $v ) {
+			if ( 0 === strpos( $k, $payment_processor ) && false === strpos( $k, '_enabled' ) ) {
+				$k = end( explode( '_', $k ) );
+				$gateway_init[ $k ] = 'testMode' === $k ? 1 : $v;
+			}
+		}
+
+		$gateway = Omnipay::create( str_replace( 'payment_', '', $payment_processor ) );
+		$gateway->initialize( $gateway_init );
+
+		try {
+			$response = $gateway->purchase( array(
+				'amount'   => $this->get_dues_amount_from_role_slug( $sanitized_values[ $prefix . 'member_type' ] ),
+				'currency' => 'USD',
+				'card'     => array(
+					'number'      => $sanitized_values[ $prefix . 'cc_number' ],
+					'expiryMonth' => $sanitized_values[ $prefix . 'cc_month'  ],
+					'expiryYear'  => $sanitized_values[ $prefix . 'cc_year'   ],
+					'cvv'         => $sanitized_values[ $prefix . 'cc_cvv'    ],
+				),
+			) )->send();
+
+			if ( $response->isSuccessful() ) {
+				wp_redirect( esc_url_raw( add_query_arg( 'payment_received', 'true' ) ) );
+				exit();
+			} elseif ( $response->isRedirect() ) {
+				$response->redirect();
+			} else {
+				// Payment failed
+				return $cmb->prop( 'submission_error', $response->getMessage() );
+			}
+		} catch ( \Exception $e ) {
+			return $cmb->prop( 'submission_error', $e->getMessage() );
+		}
+	}
+
+	/**
+	 * Returns the dues price for the given role slug or false.
+	 *
+	 * @param str $role_slug
+	 *
+	 * @return str (currency formatted) or false
+	 */
+	private function get_dues_amount_from_role_slug( $role_slug ) {
+		$roles = get_editable_roles();
+		$role_name = $roles[ $role_slug ][ 'name' ];
+		foreach ( $this->options[ 'member_types' ] as $type ) {
+			if ( $role_name === $type[ 'name' ] ) {
+				return $type[ 'dues' ];
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Handles user login.
 	 *
 	 * @return void
@@ -413,23 +811,18 @@ class ASA_Member_Portal {
 
 		$sanitized_values = $cmb->get_sanitized_values( $_POST );
 
-		/*$creds = array(
-			'user_login'    => ,
-			'user_password' => $sanitized_values[ $prefix . 'password' ],
+		$creds = array(
+			'user_login'    => $sanitized_values[ $prefix . 'login' ],
+			'user_password' => $sanitized_values[ $prefix . 'pass' ],
 			'remember'      => true,
 		);
 
-		if (
-			$the_member = get_user_by( 'email', $sanitized_values[ $prefix . 'username' ] ) ||
-			$the_member = get_user_by( 'login', $sanitized_values[ $prefix . 'username' ] )
-		) {
-			wp_signon( array(
-				'user_login'    => $sanitized_values[ $prefix . 'username' ],
-				'user_password' => $sanitized_values[ $prefix . 'password' ],
-			), true );
-		} else {
+		$user = wp_signon( $creds, true );
 
-		}*/
+		if ( is_wp_error( $user ) ) return $cmb->prop( 'submission_error', $user );
+
+		wp_redirect( esc_url_raw( add_query_arg( 'member_logged_in', 'true' ) ) );
+		exit();
 	}
 
 	/**
@@ -449,17 +842,25 @@ class ASA_Member_Portal {
 
 		$sanitized_values = $cmb->get_sanitized_values( $_POST );
 
-		if ( $this->is_member() ) {
-			$this->user->user_pass = ! empty( $sanitized_values[ $prefix . 'password' ] ) ? $sanitized_values[ $prefix . 'password' ] : $this->user->user_pass;
+		if ( $validation_errors = $this->validate_user_profile( $sanitized_values, $_POST, $prefix ) ) {
+			$cmb->prop( 'submission_error', new WP_Error( 'validation_fail', __( 'Please correct the errors below.', 'asamp' ) ) );
+			$cmb->prop( 'validation_errors', $validation_errors );
+			return $cmb;
+		}
 
-			$user_id = wp_update_user( $this->user );
+		$dest = add_query_arg( 'member_updated', 'true' );
+
+		if ( $this->is_member() ) {
+			$this->user()->user_pass = ! empty( $sanitized_values[ $prefix . 'pass' ] ) ? $sanitized_values[ $prefix . 'pass' ] : $this->user()->user_pass;
+
+			$user_id = wp_update_user( $this->user() );
 		} else {
 			$userdata = array(
 				'user_pass'            => $sanitized_values[ $prefix . 'pass' ],
 				'user_login'           => $sanitized_values[ $prefix . 'login' ],
 				'user_nicename'        => sanitize_html_class( $sanitized_values[ $prefix . 'login' ] ),
 				'user_url'             => $sanitized_values[ $prefix . 'company_website' ],
-				'user_email'           => $sanitized_values[ $prefix . 'company_contacts' ][ 0 ][ 'email' ],
+				'user_email'           => $sanitized_values[ $prefix . 'company_email' ],
 				'display_name'         => $sanitized_values[ $prefix . 'company_name' ],
 				'description'          => $sanitized_values[ $prefix . 'company_description' ],
 				'rich_editing'         => false,
@@ -475,20 +876,22 @@ class ASA_Member_Portal {
 				'user_password' => $userdata[ 'user_pass' ],
 				'remember'      => false,
 			), true );
+
+			$dest = ! empty( $this->options[ 'page_payment_form' ] ) ? get_the_permalink( $this->options[ 'page_payment_form' ] ) : $dest;
 		}
 
 		// If there is a snag, inform the user.
-		if ( is_wp_error( $user_id ) ) {
-			return $cmb->prop( 'submission_error', $user_id );
-		}
+		if ( is_wp_error( $user_id ) ) return $cmb->prop( 'submission_error', $user_id );
 
+		// Make sure unhashed passwords are never stored in the database.
+		unset( $sanitized_values[ $prefix . 'pass' ], $sanitized_values[ $prefix . 'pass_confirm' ] );
+		
 		$cmb->save_fields( $user_id, 'user', $sanitized_values );
 
 		$img_id = $this->frontend_image_upload( $prefix . 'company_logo' );
 
-		wp_redirect( esc_url_raw( add_query_arg( 'member_updated', 'true' ) ) );
-
-		exit;
+		wp_redirect( esc_url_raw( $dest ) );
+		exit();
 	}
 
 	/**
@@ -500,7 +903,7 @@ class ASA_Member_Portal {
 	 */
 	private function frontend_image_upload( $key = '' ) {
 		if (
-			empty( $_FILES )
+			   empty( $_FILES )
 			|| ! isset( $_FILES[ $key ] )
 			|| isset( $_FILES[ $key ][ 'error' ] ) && 0 !== $_FILES[ $key ][ 'error' ]
 		) {
@@ -521,6 +924,94 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Validates that the user filled out certain profile fields with appropriate values.
+	 *
+	 * @param array $posted_values
+	 * @param array $sanitized_values
+	 * @param array $prefix (optional)
+	 *
+	 * @return array $bad_fields OR false
+	 */
+	private function validate_user_profile( $posted_values, $sanitized_values, $prefix = '' ) {
+		$bad_fields = array();
+
+		if ( empty( $sanitized_values[ $prefix . 'company_name' ] ) ) {
+			$bad_fields[ $prefix . 'company_name' ] = 'Please enter a Company Name.';
+		}
+
+		if ( ! preg_match( '/^([0-9]{5})(-[0-9]{4})?$/i', $sanitized_values[ $prefix . 'company_zip' ] ) && ! empty( $sanitized_values[ $prefix . 'company_zip' ] ) ) {
+			$bad_fields[ $prefix . 'company_zip' ] = 'Please enter a valid US Zip Code.';
+		}
+
+		$phone = preg_replace( '/[^0-9]/', '', $sanitized_values[ $prefix . 'company_phone' ] );
+		if ( strlen( $phone ) === 11) $phone = preg_replace( '/^1/', '', $phone );
+		if ( strlen( $phone ) !== 10 && ! empty( $sanitized_values[ $prefix . 'company_phone' ] ) ) {
+			$bad_fields[ $prefix . 'company_phone' ] = 'Please enter a 10-digit phone number.';
+		}
+
+		if ( ! is_email( $sanitized_values[ $prefix . 'company_email' ] ) ) {
+			$bad_fields[ $prefix . 'company_email' ] = 'Please enter a valid email address.';
+		}
+
+		/*if ( false === filter_var( $sanitized_values[ $prefix . 'company_website' ], FILTER_VALIDATE_URL ) ) {
+			$bad_fields[ $prefix . 'company_website' ] = 'Please enter a valid web url.';
+		}*/
+
+		if ( is_array( $sanitized_values[ $prefix . 'company_contacts' ] ) ) {
+			foreach ( $sanitized_values[ $prefix . 'company_contacts' ] as $k => $contact ) {
+				unset( $phone );
+				$phone = preg_replace( '/[^0-9]/', '', $contact[ 'phone' ] );
+				if ( strlen( $phone ) === 11) $phone = preg_replace( '/^1/', '', $phone );
+				if ( strlen( $phone ) !== 10 && ! empty( $contact[ 'phone' ] ) ) {
+					$bad_fields[ $prefix . 'company_contacts_' . $k . '_phone' ] = 'Please enter a 10-digit phone number.';
+				}
+
+				unset( $fax );
+				$fax = preg_replace( '/[^0-9]/', '', $contact[ 'fax' ] );
+				if ( strlen( $fax ) === 11) $fax = preg_replace( '/^1/', '', $fax );
+				if ( strlen( $fax ) !== 10 && ! empty( $contact[ 'fax' ] ) ) {
+					$bad_fields[ $prefix . 'company_contacts_' . $k . '_fax' ] = 'Please enter a 10-digit fax number.';
+				}
+
+				if ( ! is_email( $contact[ 'email' ] ) && ! empty( $contact[ 'email' ] ) ) {
+					$bad_fields[ $prefix . 'company_contacts_' . $k . '_email' ] = 'Please enter a valid email address.';
+				}
+			}
+		}
+
+		if ( ! validate_username( $sanitized_values[ $prefix . 'login' ] ) || strpos( $sanitized_values[ $prefix . 'login' ], ' ' ) ) {
+			if ( ! $this->is_member() ) {
+				$bad_fields[ $prefix . 'login' ] = 'Please choose a unique username that contains only alphanumeric characters.';
+			}
+		}
+
+		if ( $this->is_member() ) {
+			$sim = similar_text( $this->user()->user_login, $sanitized_values[ $prefix . 'pass' ], $percent1 );
+			$sim = similar_text( $sanitized_values[ $prefix . 'pass' ], $this->user()->user_login, $percent2 );
+		} else {
+			$sim = similar_text( $sanitized_values[ $prefix . 'login' ], $sanitized_values[ $prefix . 'pass' ], $percent1 );
+			$sim = similar_text( $sanitized_values[ $prefix . 'pass' ], $sanitized_values[ $prefix . 'login' ], $percent2 );
+		}
+
+		if (
+			   strlen( $sanitized_values[ $prefix . 'pass' ] ) < 8
+			|| ! preg_match( '/[A-Z]/', $sanitized_values[ $prefix . 'pass' ] )
+			|| ! preg_match( '/[a-z]/', $sanitized_values[ $prefix . 'pass' ] )
+			|| ! preg_match( '/[0-9]/', $sanitized_values[ $prefix . 'pass' ] )
+			|| 75 < ( $percent1 + $percent2 ) / 2
+		) {
+			$bad_fields[ $prefix . 'pass' ] = 'Password Requirements: <ul><li>At least 8 characters</li><li>Contain one uppercase letter</li><li>Contain one lowercase letter</li><li>Contain one number</li><li>Cannot be too similar to your username.</li></ul>';
+		}
+		if ( $this->is_member() && empty( $sanitized_values[ $prefix . 'pass' ] ) ) unset( $bad_fields[ $prefix . 'pass' ] );
+
+		if ( $sanitized_values[ $prefix . 'pass_confirm' ] !== $sanitized_values[ $prefix . 'pass' ] ) {
+			$bad_fields[ $prefix . 'pass_confirm' ] = 'Passwords must match.';
+		}
+
+		return ! empty( $bad_fields ) ? $bad_fields : false;
+	}
+
+	/**
 	 * Adds tabs to the plugin options page.
 	 *
 	 * @return array $tabs
@@ -533,6 +1024,7 @@ class ASA_Member_Portal {
 				'boxes' => array(
 					'registration',
 					'directory',
+					'pages',
 					'administration',
 				),
 			),
@@ -540,8 +1032,8 @@ class ASA_Member_Portal {
 				'id'    => 'payment',
 				'title' => __( 'Payment', 'asamp' ),
 				'boxes' => array(
-					'paypal_pro',
-					'stripe',
+					'payment_PayPal_Pro',
+					'payment_Stripe',
 				),
 			),
 		);
@@ -552,7 +1044,7 @@ class ASA_Member_Portal {
 	/**
 	 * Adds plugin options.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function options_init() {
 		$options_key = 'asa_member_portal';
@@ -575,7 +1067,7 @@ class ASA_Member_Portal {
 	/**
 	 * Adds custom fields to custom post type 'dues_payment'.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function dues_payments_init() {
 		$prefix = '_asamp_dues_';
@@ -608,7 +1100,7 @@ class ASA_Member_Portal {
 	 * @param post $post The post object.
 	 * @param bool $update Whether this is an existing post being updated or not.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function dues_payment_save( $post_ID, $post, $update ) {
 		if ( ! $update ) return;
@@ -630,7 +1122,7 @@ class ASA_Member_Portal {
 	/**
 	 * Registers custom post types.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function register_post_types() {
 		$labels = array(
@@ -648,8 +1140,8 @@ class ASA_Member_Portal {
 			'label'               => __( 'Dues Payments', 'asamp' ),
 			'labels'              => $labels,
 			'description'         => '',
-			'public'              => true,
-			'publicly_queryable'  => true,
+			'public'              => false,
+			'publicly_queryable'  => false,
 			'show_ui'             => true,
 			'show_in_rest'        => false,
 			'rest_base'           => '',
@@ -670,6 +1162,148 @@ class ASA_Member_Portal {
 		);
 
 		register_post_type( 'dues_payment', $args );
+	}
+
+	/**
+	 * Registers a frontend login form.
+	 *
+	 * @return void
+	 */
+	public function login_form_init() {
+		$prefix = 'asamp_login_';
+		$cmb = new_cmb2_box( array(
+			'id'           => $prefix . 'form',
+			'object_types' => array( 'post' ),
+			'hookup'       => false,
+			'save_fields'  => false,
+		) );
+		$cmb->add_field( array(
+			'name' => __( 'Username / Email', 'asamp' ),
+			'id'   => $prefix . 'login',
+			'type' => 'text',
+		) );
+		$cmb->add_field( array(
+			'name' => __( 'Password', 'asamp' ),
+			'id'   => $prefix . 'pass',
+			'type' => 'text',
+			'attributes' => array(
+				'type' => 'password',
+			),
+		) );
+		$cmb->add_hidden_field( array(
+			'field_args'  => array(
+				'id'      => $prefix . 'nonce',
+				'type'    => 'hidden',
+				'default' => wp_create_nonce( $prefix . 'nonce' ),
+			),
+		) );
+	}
+
+	/**
+	 * Registers a frontend payment form.
+	 *
+	 * @return void
+	 */
+	public function payment_form_init() {
+		$prefix = 'asamp_payment_';
+		$cmb = new_cmb2_box( array(
+			'id'           => $prefix . 'form',
+			'object_types' => array( 'post' ),
+			//'hookup'       => false,
+			'save_fields'  => false,
+		) );
+		$cmb->add_field( array(
+			'name'       => ! empty( $this->options[ 'member_type_label' ] ) ? $this->options[ 'member_type_label' ] : $this->get_default_member_type_label(),
+			'id'         => $prefix . 'member_type',
+			'type'       => 'select',
+			'default'    => $this->user()->roles[ 0 ],
+			'options'    => $this->get_asamp_role_select(),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'First Name', 'asamp' ),
+			'id'         => $prefix . 'firstname',
+			'type'       => 'text',
+			'attributes' => array(
+				'required' => 'required',
+			),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'Last Name', 'asamp' ),
+			'id'         => $prefix . 'lastname',
+			'type'       => 'text',
+			'attributes' => array(
+				'required' => 'required',
+			),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'Credit Card Number', 'asamp' ),
+			'id'         => $prefix . 'cc_number',
+			'type'       => 'text',
+			'attributes' => array(
+				'required' => 'required',
+			),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'Month', 'asamp' ),
+			'id'         => $prefix . 'cc_month',
+			'type'       => 'select',
+			'options'    => $this->get_months_array(),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'Year', 'asamp' ),
+			'id'         => $prefix . 'cc_year',
+			'type'       => 'select',
+			'options'    => $this->get_years_array( date( 'Y' ), date( 'Y', strtotime( date( 'Y' ) . ' +9 years' ) ) ),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'CVV', 'asamp' ),
+			'id'         => $prefix . 'cc_cvv',
+			'type'       => 'text',
+			'attributes' => array(
+				'required' => 'required',
+			),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'Billing Address', 'asamp' ),
+			'id'         => $prefix . 'cc_address',
+			'type'       => 'text',
+			'default'    => $this->user_meta()->asamp_user_company_street,
+			'attributes' => array(
+				'required' => 'required',
+			),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'City', 'asamp' ),
+			'id'         => $prefix . 'cc_city',
+			'type'       => 'text',
+			'default'    => $this->user_meta()->asamp_user_company_city,
+			'attributes' => array(
+				'required' => 'required',
+			),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'State', 'asamp' ),
+			'id'         => $prefix . 'cc_state',
+			'type'       => 'select',
+			'default'    => ! empty( $this->user_meta()->asamp_user_company_state ) ? $this->user_meta()->asamp_user_company_state : $this->options[ 'state_default' ],
+			'options'    => $this->get_us_states_array(),
+		) );
+		$cmb->add_field( array(
+			'name'       => __( 'Zip Code', 'asamp' ),
+			'id'         => $prefix . 'cc_zip',
+			'type'       => 'text',
+			'default'    => $this->user_meta()->asamp_user_company_zip,
+			'attributes' => array(
+				'required' => 'required',
+			),
+		) );
+		$cmb->add_hidden_field( array(
+			'field_args'  => array(
+				'id'      => $prefix . 'nonce',
+				'type'    => 'hidden',
+				'default' => wp_create_nonce( $prefix . 'nonce' ),
+			),
+		) );
 	}
 
 	/**
@@ -699,7 +1333,7 @@ class ASA_Member_Portal {
 		
 		$cmb = new_cmb2_box( array(
 			'id'              => 'registration',
-			'title'           => __( 'Registration/Profile', 'asamp' ),
+			'title'           => __( 'Profile/Registration', 'asamp' ),
 			'show_on'         => $show_on,
 			'display_cb'      => false,
 			'admin_menu_hook' => false,
@@ -834,6 +1468,30 @@ class ASA_Member_Portal {
 		$boxes[] = $cmb;
 		
 		$cmb = new_cmb2_box( array(
+			'id'              => 'pages',
+			'title'           => __( 'Pages', 'asamp' ),
+			'show_on'         => $show_on,
+			'display_cb'      => false,
+			'admin_menu_hook' => false,
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'Profile/Registration Form', 'asamp' ),
+			'desc'            => __( 'The page that contains the shortcode: [asamp_member_profile]', 'asamp' ),
+			'id'              => 'page_profile',
+			'type'            => 'select',
+			'options'         => $this->get_pages_array(),
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'Payment Form', 'asamp' ),
+			'desc'            => __( 'The page that contains the shortcode: [asamp_member_payment_form]', 'asamp' ),
+			'id'              => 'page_payment_form',
+			'type'            => 'select',
+			'options'         => $this->get_pages_array(),
+		) );
+		$cmb->object_type( 'options-page' );
+		$boxes[] = $cmb;
+		
+		$cmb = new_cmb2_box( array(
 			'id'              => 'administration',
 			'title'           => __( 'Administration', 'asamp' ),
 			'show_on'         => $show_on,
@@ -885,7 +1543,7 @@ class ASA_Member_Portal {
 		$boxes[] = $cmb;
 		
 		$cmb = new_cmb2_box( array(
-			'id'              => 'paypal_pro',
+			'id'              => 'payment_PayPal_Pro',
 			'title'           => __( 'PayPal Pro', 'asamp' ),
 			'show_on'         => $show_on,
 			'display_cb'      => false,
@@ -893,7 +1551,7 @@ class ASA_Member_Portal {
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'PayPal Pro Enabled', 'asamp' ),
-			'id'              => 'paypal_pro_enabled',
+			'id'              => 'payment_PayPal_Pro_enabled',
 			'type'            => 'radio_inline',
 			'default'         => 'no',
 			'options' => array(
@@ -903,24 +1561,29 @@ class ASA_Member_Portal {
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'PayPal Pro API Username', 'asamp' ),
-			'id'              => 'paypal_pro_api_username',
+			'id'              => 'payment_PayPal_Pro_username',
 			'type'            => 'text',
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'PayPal Pro API Password', 'asamp' ),
-			'id'              => 'paypal_pro_api_password',
+			'id'              => 'payment_PayPal_Pro_password',
 			'type'            => 'text',
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'PayPal Pro API Signature', 'asamp' ),
-			'id'              => 'paypal_pro_api_signature',
+			'id'              => 'payment_PayPal_Pro_signature',
 			'type'            => 'text',
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'Use PayPal Pro in Test Mode', 'asamp' ),
+			'id'              => 'payment_PayPal_Pro_testMode',
+			'type'            => 'checkbox',
 		) );
 		$cmb->object_type( 'options-page' );
 		$boxes[] = $cmb;
 		
 		$cmb = new_cmb2_box( array(
-			'id'              => 'stripe',
+			'id'              => 'payment_Stripe',
 			'title'           => __( 'Stripe', 'asamp' ),
 			'show_on'         => $show_on,
 			'display_cb'      => false,
@@ -928,7 +1591,7 @@ class ASA_Member_Portal {
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'Stripe Enabled', 'asamp' ),
-			'id'              => 'stripe_enabled',
+			'id'              => 'payment_Stripe_enabled',
 			'type'            => 'radio_inline',
 			'default'         => 'no',
 			'options' => array(
@@ -938,7 +1601,7 @@ class ASA_Member_Portal {
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'Stripe API Key', 'asamp' ),
-			'id'              => 'stripe_api_key',
+			'id'              => 'payment_Stripe_apiKey',
 			'type'            => 'text',
 		) );
 		$cmb->object_type( 'options-page' );
@@ -950,7 +1613,7 @@ class ASA_Member_Portal {
 	/**
 	 * Adds member profile fields to user meta.
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function user_meta_init() {
 		$prefix = 'asamp_user_';
@@ -975,15 +1638,28 @@ class ASA_Member_Portal {
 		) );
 
 		$cmb_user->add_field( array(
-			'name'            => __( 'ASA Member Info', 'asamp' ),
-			'id'              => $prefix . 'section_member_info',
+			'name'            => $this->is_member() || is_admin() ? __( 'Update ASA Member Profile', 'asamp' ) : __( 'Create New ASA Member Profile', 'asamp' ),
+			'id'              => $prefix . 'form_title',
 			'type'            => 'title',
+			'render_row_cb'   => array( $this, 'form_heading' ),
 		) );
+
+		if ( ! is_admin() ) {
+			$cmb_user->add_field( array(
+				'name'            => __( 'Company Info', 'asamp' ),
+				'id'              => $prefix . 'section_company_info',
+				'type'            => 'title',
+				'render_row_cb'   => array( $this, 'open_fieldset' ),
+			) );
+		}
 
 		$cmb_user->add_field( array(
 			'name'            => __( 'Company Name', 'asamp' ),
 			'id'              => $prefix . 'company_name',
 			'type'            => 'text',
+			'attributes'      => array(
+				'required' => 'required',
+			),
 		) );
 
 		$cmb_user->add_field( array(
@@ -1008,8 +1684,8 @@ class ASA_Member_Portal {
 			'name'            => __( 'State', 'asamp' ),
 			'id'              => $prefix . 'company_state',
 			'type'            => 'select',
-			'deefault'        => $this->options[ 'state_default' ],
-			'options'         => $this->get_us_states_array( $this->options[ 'state_default' ] ),
+			'default'         => $this->options[ 'state_default' ],
+			'options'         => $this->get_us_states_array(),
 		) );
 
 		$cmb_user->add_field( array(
@@ -1057,12 +1733,7 @@ class ASA_Member_Portal {
 			'type'            => 'select',
 			'sanitization_cb' => 'absint',
 			'default'         => date( 'Y', strtotime( date( 'Y' ) . ' -5 years' ) ),
-			'options'         => function(){
-				$current_year = date( 'Y' );
-				$start_year   = date( 'Y', strtotime( $current_year . ' -100 years' ) );
-				$years        = range( $start_year, $current_year );
-				return array_combine( $years, $years );
-			}
+			'options'         => $this->get_years_array( date( 'Y', strtotime( date( 'Y' ) . ' -100 years' ) ) ),
 		) );
 
 		$cmb_user->add_field( array(
@@ -1112,6 +1783,15 @@ class ASA_Member_Portal {
 				'text'            => array(
 					'add_row_text' => __( 'Add Another "Other" Type/Trade', 'asamp' ),
 				),
+			) );
+		}
+
+		if ( ! is_admin() ) {
+			$cmb_user->add_field( array(
+				'name'            => __( 'Contacts', 'asamp' ),
+				'id'              => $prefix . 'section_company_contacts',
+				'type'            => 'title',
+				'render_row_cb'   => array( $this, 'open_fieldset' ),
 			) );
 		}
 
@@ -1169,51 +1849,69 @@ class ASA_Member_Portal {
 			) );
 
 		if ( ! is_admin() ) {
-			$cmb_user->add_field( array(
-				'name'            => ! empty( $this->options[ 'member_type_label' ] ) ? $this->options[ 'member_type_label' ] : $this->get_default_member_type_label(),
-				'id'              => $prefix . 'member_type',
-				'type'            => 'select',
-				//'default'         => '',
-				'options'         => function(){
-					if ( ! empty( $this->options[ 'member_types' ] ) ) {
-						$member_types = $this->options[ 'member_types' ];
-					} else {
-						$member_types = array( array( 'name' => $this->get_default_member_type_name() ) );
-					}
-					$output = array();
-					foreach ( $member_types as $member_type ) {
-						$output[ 'asamp_' . sanitize_key( $member_type[ 'name' ] ) ] = $member_type[ 'name' ] . ' (Dues: $' . $member_type[ 'dues' ] . '/Year)';
-					}
-
-					return $output;
-				}
-			) );
-
 			if ( ! $this->is_member() ) {
+
+				$cmb_user->add_field( array(
+					'name'            => __( 'Membership', 'asamp' ),
+					'id'              => $prefix . 'section_member_type',
+					'type'            => 'title',
+					'render_row_cb'   => array( $this, 'open_fieldset' ),
+				) );
+
+				$cmb_user->add_field( array(
+					'name'            => ! empty( $this->options[ 'member_type_label' ] ) ? $this->options[ 'member_type_label' ] : $this->get_default_member_type_label(),
+					'id'              => $prefix . 'member_type',
+					'type'            => 'select',
+					'options'         => $this->get_asamp_role_select(),
+				) );
+
+				$cmb_user->add_field( array(
+					'name'            => __( 'Login Info', 'asamp' ),
+					'id'              => $prefix . 'section_login_info',
+					'type'            => 'title',
+					'render_row_cb'   => array( $this, 'open_fieldset' ),
+				) );
+
 				$cmb_user->add_field( array(
 					'name'            => __( 'Username', 'asamp' ),
 					'id'              => $prefix . 'login',
 					'type'            => 'text',
+					'attributes'      => array(
+						'required' => 'required',
+					),
+				) );
+			}
+
+			if ( $this->is_member() ) {
+				$cmb_user->add_field( array(
+					'name'            => __( 'Login Info', 'asamp' ),
+					'id'              => $prefix . 'section_login_info',
+					'type'            => 'title',
+					'render_row_cb'   => array( $this, 'open_fieldset' ),
 				) );
 			}
 			
-			$cmb_user->add_field( array(
+			$args = array(
 				'name'            => $this->is_member() ? __( 'New Password', 'asamp' ) : __( 'Password', 'asamp' ),
 				'id'              => $prefix . 'pass',
 				'type'            => 'text',
 				'attributes'      => array(
-					'type'    => 'password',
+					'type'     => 'password',
 				),
-			) );
+			);
+			if ( ! $this->is_member() ) $args[ 'attributes' ][ 'required' ] = 'required';
+			$cmb_user->add_field( $args );
 
-			$cmb_user->add_field( array(
+			$args = array(
 				'name'            => __( 'Confirm Password', 'asamp' ),
 				'id'              => $prefix . 'pass_confirm',
 				'type'            => 'text',
 				'attributes'      => array(
-					'type'    => 'password',
+					'type'     => 'password',
 				),
-			) );
+			);
+			if ( ! $this->is_member() ) $args[ 'attributes' ][ 'required' ] = 'required';
+			$cmb_user->add_field( $args );
 
 			$cmb_user->add_hidden_field( array(
 				'field_args'  => array(
@@ -1221,6 +1919,13 @@ class ASA_Member_Portal {
 					'type'    => 'hidden',
 					'default' => wp_create_nonce( $prefix . 'nonce' ),
 				),
+			) );
+
+			$cmb_user->add_field( array(
+				'name'            => __( 'End Form', 'asamp' ),
+				'id'              => $prefix . 'section_end_form',
+				'type'            => 'title',
+				'render_row_cb'   => array( $this, 'close_fieldset' ),
 			) );
 		}
 	}
@@ -1231,7 +1936,7 @@ class ASA_Member_Portal {
 	 * @param mixed  $log
 	 * @param string $id
 	 *
-	 * @return null
+	 * @return void
 	 */
 	public function write_log( $log, $id = '' ) {
 		error_log( '************* ' . $id . ' *************' );
