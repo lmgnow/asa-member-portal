@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           0.1.0
+ * Version:           0.0.1
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -90,7 +90,7 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * Deletes plugin settings, data, etc.
+	 * Removes roles created by this plugin.
 	 *
 	 * @return void
 	 */

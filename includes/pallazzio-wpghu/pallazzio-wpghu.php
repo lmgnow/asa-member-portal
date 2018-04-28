@@ -64,7 +64,7 @@ class Pallazzio_WPGHU {
 		if ( isset( $transient->response[ $this->item ] ) || isset( $transient->response[ $this->github_repo ] ) ) return $transient;
 
 		$last_github_call_time = get_option( $this->github_user . '_' . $this->github_repo . '_Pallazzio_WPGHU_Time' );
-		if ( $last_github_call_time && time() - $last_github_call_time < 60 * 60 * 6 ) { // don't query github more than once every six hours
+		if ( $last_github_call_time && time() - $last_github_call_time < /*60 * 60 **/ 6 ) { // don't query github more than once every six hours
 
 			if ( $stored = get_option( $this->github_user . '_' . $this->github_repo . '_Pallazzio_WPGHU' ) && ! empty( $stored ) ) {
 
