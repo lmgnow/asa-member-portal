@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           0.1.2
+ * Version:           0.0.1
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -19,13 +19,13 @@ use Omnipay\Omnipay;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $plugin_file_path = '';      // str             (with trailing slash) Absolute path to this file.
-	private $plugin_dir_path  = '';      // str             (with trailing slash) Absolute path to this directory.
-	private $plugin_dir_url   = '';      // str             (with trailing slash) URL of this directory.
+	private $plugin_file_path = '';      // str             Absolute path to this file.      (with trailing slash)
+	private $plugin_dir_path  = '';      // str             Absolute path to this directory. (with trailing slash)
+	private $plugin_dir_url   = '';      // str             URL of this directory.           (with trailing slash)
 	private $plugin_data      = array(); // array
 	private $options          = array(); // array           CMB2 options for this plugin.
-	private $user             = null;    // WP_User object  Current logged in user.
-	private $user_meta        = null;    // object          Current logged in user's user_meta data.
+	private $user             = null;    // WP_User  object Current logged in user.
+	private $user_meta        = null;    // stdClass object Current logged in user's user_meta data.
 	private $is_member        = false;   // bool            true if $this->user is a member.
 	private $fieldset_open    = false;   // bool            true if fieldset is already open.
 
@@ -113,8 +113,8 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function asamp_enqueue() {
-		wp_enqueue_style(  'asamp_style',  $this->plugin_dir_url . 'css/asamp-style.css', array(), $this->plugin_data[ 'Version' ], 'screen' );
-		wp_enqueue_script( 'asamp_script', $this->plugin_dir_url .  'js/asamp-script.js', array(), $this->plugin_data[ 'Version' ], true     );
+		wp_enqueue_style(  'asamp_style',  $this->plugin_dir_url . 'css/asamp-style.css', array(          ), $this->plugin_data[ 'Version' ], 'screen' );
+		wp_enqueue_script( 'asamp_script', $this->plugin_dir_url .  'js/asamp-script.js', array( 'jquery' ), $this->plugin_data[ 'Version' ], true     );
 	}
 
 	/**
@@ -128,8 +128,8 @@ class ASA_Member_Portal {
 		$hooks = array( 'settings_page_asa_member_portal', 'user-new.php', 'profile.php' );
 		foreach ( $hooks as $v ) {
 			if ( $v === $hook ) {
-				wp_enqueue_style(  'asamp_admin_style',  $this->plugin_dir_url . 'css/asamp-admin-style.css', array(), $this->plugin_data[ 'Version' ], 'screen' );
-				wp_enqueue_script( 'asamp_admin_script', $this->plugin_dir_url .  'js/asamp-admin-script.js', array(), $this->plugin_data[ 'Version' ], true     );
+				wp_enqueue_style(  'asamp_admin_style',  $this->plugin_dir_url . 'css/asamp-admin-style.css', array(          ), $this->plugin_data[ 'Version' ], 'screen' );
+				wp_enqueue_script( 'asamp_admin_script', $this->plugin_dir_url .  'js/asamp-admin-script.js', array( 'jquery' ), $this->plugin_data[ 'Version' ], true     );
 			}
 		}
 	}
@@ -290,10 +290,11 @@ class ASA_Member_Portal {
 
 		if ( $validation_errors = $cmb->prop( 'validation_errors' ) ) {
 			ob_start();
+			// TODO: enqueue this script properly with jQuery as a dependency.
 			?>
 				<script>
 					(function($){
-						"use strict";
+						'use strict';
 						$(document).ready(function(){
 							var asampMPVE = <?php echo json_encode( $validation_errors ); ?>;
 							$.each(asampMPVE, function(key, data){
@@ -717,7 +718,7 @@ class ASA_Member_Portal {
 	/**
 	 * Handles dues payment form submission and payment processing.
 	 *
-	 * @return void
+	 * @return error or success or redirect
 	 */
 	public function frontend_dues_payment() {
 		$prefix = 'asamp_payment_';
@@ -731,12 +732,15 @@ class ASA_Member_Portal {
 
 		$sanitized_values = $cmb->get_sanitized_values( $_POST );
 
+		$payment_processor = '';
 		foreach ( $this->options as $k => $v ) {
 			if ( 0 === strpos( $k, 'payment_' ) && false !== strpos( $k, '_enabled' ) && $v === 'yes' ) {
 				$payment_processor = str_replace( '_enabled', '', $k );
 				break;
 			}
 		}
+
+		if ( empty( $payment_processor ) ) return $cmb->prop( 'submission_error', __( 'We cannot process payments online at this time. Please try again later or contact us.', 'asamp' ) );
 
 		$gateway_init = array();
 		foreach ( $this->options as $k => $v ) {
@@ -765,6 +769,7 @@ class ASA_Member_Portal {
 				wp_redirect( esc_url_raw( add_query_arg( 'payment_received', 'true' ) ) );
 				exit();
 			} elseif ( $response->isRedirect() ) {
+				// TODO: find out what this does.
 				$response->redirect();
 			} else {
 				// Payment failed
@@ -773,6 +778,8 @@ class ASA_Member_Portal {
 		} catch ( \Exception $e ) {
 			return $cmb->prop( 'submission_error', $e->getMessage() );
 		}
+
+		return $cmb->prop( 'submission_error', __( 'We are experiencing technical difficulties. Please try again later or contact us.', 'asamp' ) );
 	}
 
 	/**
@@ -952,10 +959,6 @@ class ASA_Member_Portal {
 		if ( ! is_email( $sanitized_values[ $prefix . 'company_email' ] ) ) {
 			$bad_fields[ $prefix . 'company_email' ] = 'Please enter a valid email address.';
 		}
-
-		/*if ( false === filter_var( $sanitized_values[ $prefix . 'company_website' ], FILTER_VALIDATE_URL ) ) {
-			$bad_fields[ $prefix . 'company_website' ] = 'Please enter a valid web url.';
-		}*/
 
 		if ( is_array( $sanitized_values[ $prefix . 'company_contacts' ] ) ) {
 			foreach ( $sanitized_values[ $prefix . 'company_contacts' ] as $k => $contact ) {
