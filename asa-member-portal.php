@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           0.1.1
+ * Version:           0.1.2
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -507,7 +507,7 @@ class ASA_Member_Portal {
 	 * @return bool
 	 */
 	public function is_member( $force_check = false ) {
-		if ( is_bool( $this->is_member ) && ! $force_check ) return $this->is_member;
+		if ( $this->is_member && ! $force_check ) return $this->is_member;
 
 		if ( is_user_logged_in() ) {
 			$roles = ( array ) $this->user()->roles;
