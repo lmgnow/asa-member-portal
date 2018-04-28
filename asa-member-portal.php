@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           0.0.1
+ * Version:           0.1.3
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -734,7 +734,7 @@ class ASA_Member_Portal {
 
 		$payment_processor = '';
 		foreach ( $this->options as $k => $v ) {
-			if ( 0 === strpos( $k, 'payment_' ) && false !== strpos( $k, '_enabled' ) && $v === 'yes' ) {
+			if ( 0 === strpos( $k, 'payment_' ) && false !== strpos( $k, '_enabled' ) && 'yes' === $v ) {
 				$payment_processor = str_replace( '_enabled', '', $k );
 				break;
 			}
@@ -769,7 +769,7 @@ class ASA_Member_Portal {
 				wp_redirect( esc_url_raw( add_query_arg( 'payment_received', 'true' ) ) );
 				exit();
 			} elseif ( $response->isRedirect() ) {
-				// TODO: find out what this does.
+				// TODO: find out how this works.
 				$response->redirect();
 			} else {
 				// Payment failed
