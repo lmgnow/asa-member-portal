@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           0.0.1
+ * Version:           0.1.0
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -43,8 +43,8 @@ class ASA_Member_Portal {
 		require_once $this->plugin_dir_path . 'includes/vendor/webdevstudios/cmb2/init.php';
 		require_once $this->plugin_dir_path . 'includes/vendor/rogerlos/cmb2-metatabs-options/cmb2_metatabs_options.php';
 
-		//require_once $this->plugin_dir_path . 'includes/pallazzio-wordpress-github-updater/pallazzio-wordpress-github-updater.php';
-		//new Pallazzio_WordPress_GitHub_Updater( $this->plugin_dir_path . wp_basename( $this->plugin_file_path ), 'pallazzio' );
+		require_once $this->plugin_dir_path . 'includes/pallazzio-wpghu/pallazzio-wpghu.php';
+		new Pallazzio_WPGHU( $this->plugin_dir_path . wp_basename( $this->plugin_file_path ), 'lmgnow' );
 
 		$this->options = get_option( 'asa_member_portal' );
 
