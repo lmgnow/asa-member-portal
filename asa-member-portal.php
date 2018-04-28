@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           0.0.1
+ * Version:           0.1.1
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -19,15 +19,15 @@ use Omnipay\Omnipay;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $plugin_file_path = null;  // string          (with trailing slash) Absolute path to this file.
-	private $plugin_dir_path  = null;  // string          (with trailing slash) Absolute path to this directory.
-	private $plugin_dir_url   = null;  // string          (with trailing slash) URL of this directory.
-	private $plugin_data      = null;  // array
-	private $options          = null;  // array           CMB2 options for this plugin.
-	private $user             = null;  // WP_User object  Current logged in user.
-	private $user_meta        = null;  // object          Current logged in user's user_meta data.
-	private $is_member        = null;  // bool            true if $this->user is a member.
-	private $fieldset_open    = false; // bool            true if fieldset is already open.
+	private $plugin_file_path = '';      // str             (with trailing slash) Absolute path to this file.
+	private $plugin_dir_path  = '';      // str             (with trailing slash) Absolute path to this directory.
+	private $plugin_dir_url   = '';      // str             (with trailing slash) URL of this directory.
+	private $plugin_data      = array(); // array
+	private $options          = array(); // array           CMB2 options for this plugin.
+	private $user             = null;    // WP_User object  Current logged in user.
+	private $user_meta        = null;    // object          Current logged in user's user_meta data.
+	private $is_member        = false;   // bool            true if $this->user is a member.
+	private $fieldset_open    = false;   // bool            true if fieldset is already open.
 
 	/**
 	 * Constructs object.
