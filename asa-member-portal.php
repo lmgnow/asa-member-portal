@@ -324,34 +324,49 @@ class ASA_Member_Portal {
 		$prefix = 'asamp_login_';
 		$output = '';
 
-		if ( $this->is_member() ) {
-			$output .= '<p>' . __( 'Welcome', 'asamp' ) . ' ' . $this->user_meta()->asamp_user_company_name . '</p>';
+		$instance = shortcode_atts( array(
+			'hide' => false,
+			'link' => __( 'Sign In', 'asamp' ),
+		), $atts, 'asamp_member_login_box' );
 
-			$status = $this->user_meta()->asamp_user_member_status;
-			if ( 'active' !== $status ) {
-				$output .= '<div class="alert alert-danger">' . __( 'ASA Membership Inactive', 'asamp' ) . '</div>';
-				$output .= ! empty( $ppf = $this->options[ 'page_payment_form' ] ) ? '<a class="btn btn-success button button-success" href="' . get_the_permalink( $ppf ) . '">' . __( 'Activate Now', 'asamp' ) . '</a>' : '';
+		$instance[ 'hide' ] = 'false' === $instance[ 'hide' ] || ! $instance[ 'hide' ] ? false : true;
+		$instance[ 'link' ] = sanitize_text_field( $instance[ 'link' ] );
+
+		$output .= $instance[ 'hide' ] ? '<a href="#" class="asamp-login-box-activator">' . $instance[ 'link' ] . '</a>' : '';
+
+		$hidden = $instance[ 'hide' ] ? ' hidden over' : '';
+		$output .= '<div class="asamp-login-box' . $hidden . '"><div>';
+
+			if ( $this->is_member() ) {
+				$output .= '<p>' . __( 'Welcome', 'asamp' ) . ' ' . $this->user_meta()->asamp_user_company_name . '</p>';
+
+				$status = $this->user_meta()->asamp_user_member_status;
+				if ( 'active' !== $status ) {
+					$output .= '<div class="alert alert-danger">' . __( 'ASA Membership Inactive', 'asamp' ) . '</div>';
+					$output .= ! empty( $ppf = $this->options[ 'page_payment_form' ] ) ? '<a class="btn btn-success button button-success" href="' . get_the_permalink( $ppf ) . '">' . __( 'Activate Now', 'asamp' ) . '</a>' : '';
+				}
+
+				$output .= ! empty( $pp = $this->options[ 'page_profile' ] ) ? '<a class="btn btn-primary button button-primary" href="' . get_the_permalink( $pp ) . '">' . __( 'Manage Profile', 'asamp' ) . '</a>' : '';
+
+				global $wp;
+				$output .= '<a class="btn btn-danger button button-danger" href="' . wp_logout_url( add_query_arg( 'member_logged_out', 'true', home_url( '/' ) . $wp->request ) ) . '">' . __( 'Log Out', 'asamp' ) . '</a>';
+			} else {
+				$cmb = cmb2_get_metabox( $prefix . 'form' );
+
+				if ( ( $error = $cmb->prop( 'submission_error' ) ) && is_wp_error( $error ) ) {
+					$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>' . $error->get_error_message() . '</strong>' ) . '</div>';
+				}
+
+				if ( 'true' === $_GET[ 'member_logged_out' ] ) {
+					$output .= '<div class="alert alert-info">' . __( 'You have been logged out.', 'asamp' ) . '</div>';
+				}
+
+				$output .= cmb2_get_metabox_form( $cmb, '', array( 'save_button' => __( 'Sign In', 'asamp' ) ) );
+
+				$output .= ! empty( $pp = $this->options[ 'page_profile' ] ) ? '<a class="btn btn-success button button-success" href="' . get_the_permalink( $pp ) . '">' . __( 'Register', 'asamp' ) . '</a>' : '';
 			}
 
-			$output .= ! empty( $pp = $this->options[ 'page_profile' ] ) ? '<a class="btn btn-primary button button-primary" href="' . get_the_permalink( $pp ) . '">' . __( 'Manage Profile', 'asamp' ) . '</a>' : '';
-
-			global $wp;
-			$output .= '<a class="btn btn-danger button button-danger" href="' . wp_logout_url( add_query_arg( 'member_logged_out', 'true', home_url( '/' ) . $wp->request ) ) . '">' . __( 'Log Out', 'asamp' ) . '</a>';
-		} else {
-			$cmb = cmb2_get_metabox( $prefix . 'form' );
-
-			if ( ( $error = $cmb->prop( 'submission_error' ) ) && is_wp_error( $error ) ) {
-				$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>' . $error->get_error_message() . '</strong>' ) . '</div>';
-			}
-
-			if ( 'true' === $_GET[ 'member_logged_out' ] ) {
-				$output .= '<div class="alert alert-info">' . __( 'You have been logged out.', 'asamp' ) . '</div>';
-			}
-
-			$output .= cmb2_get_metabox_form( $cmb, '', array( 'save_button' => __( 'Sign In', 'asamp' ) ) );
-
-			$output .= ! empty( $pp = $this->options[ 'page_profile' ] ) ? '<a class="btn btn-success button button-success" href="' . get_the_permalink( $pp ) . '">' . __( 'Register', 'asamp' ) . '</a>' : '';
-		}
+		$output .= '</div></div>';
 
 		return $output;
 	}

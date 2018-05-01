@@ -38,6 +38,25 @@ form[id^="asamp"] .cmb-repeat > .cmb-td .cmb-add-row-button {
 	margin-bottom: 2em;
 }
 
+.asamp-login-box.over {
+	position: relative;
+}
+
+.asamp-login-box-activator.hidden,
+.asamp-login-box.hidden {
+	display: none;
+}
+
+.asamp-login-box.over > div {
+	z-index: 2;
+	position: absolute;
+	left: 0;
+	top: 0;
+	background-color: #fff;
+	border: 1px solid #ddd;
+	padding: 1em;
+}
+
 .asamp-submission-error-message,
 .asamp-validation-error-message {
 	background-color: #f8d7da;
