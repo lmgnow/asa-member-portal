@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           1.0.2
+ * Version:           1.0.3
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -2164,6 +2164,16 @@ class ASA_Member_Portal {
 					</dd>
 				</dl>
 				<p>Note: After adding shortcodes to your pages, remember to come back to the settings and tell me which pages your shortcodes are on.</p>
+				<h3>Roles:</h3>
+				<p>Other plugins like "Contact Listing for WP Job Manager" may need to be configured with a role slug. Your roles are listed here.</p>
+				<dl>
+					<?php
+						$roles = $this->get_asamp_roles();
+						foreach ( $roles as $k => $v ) {
+							echo '<dt>' . $v[ 'name' ] . '</dt><dd>' . $k . '</dd>';
+						}
+					?>
+				</dl>
 			</div>
 		<?php
 	}
