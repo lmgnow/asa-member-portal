@@ -585,17 +585,17 @@
     },
     {
         "name": "symfony/event-dispatcher",
-        "version": "v4.0.6",
-        "version_normalized": "4.0.6.0",
+        "version": "v4.0.9",
+        "version_normalized": "4.0.9.0",
         "source": {
             "type": "git",
             "url": "https://github.com/symfony/event-dispatcher.git",
-            "reference": "85eaf6a8ec915487abac52e133efc4a268204428"
+            "reference": "63353a71073faf08f62caab4e6889b06a787f07b"
         },
         "dist": {
             "type": "zip",
-            "url": "https://api.github.com/repos/symfony/event-dispatcher/zipball/85eaf6a8ec915487abac52e133efc4a268204428",
-            "reference": "85eaf6a8ec915487abac52e133efc4a268204428",
+            "url": "https://api.github.com/repos/symfony/event-dispatcher/zipball/63353a71073faf08f62caab4e6889b06a787f07b",
+            "reference": "63353a71073faf08f62caab4e6889b06a787f07b",
             "shasum": ""
         },
         "require": {
@@ -615,7 +615,7 @@
             "symfony/dependency-injection": "",
             "symfony/http-kernel": ""
         },
-        "time": "2018-02-14T14:11:10+00:00",
+        "time": "2018-04-06T07:35:43+00:00",
         "type": "library",
         "extra": {
             "branch-alias": {
@@ -650,17 +650,17 @@
     },
     {
         "name": "symfony/http-foundation",
-        "version": "v2.8.36",
-        "version_normalized": "2.8.36.0",
+        "version": "v2.8.39",
+        "version_normalized": "2.8.39.0",
         "source": {
             "type": "git",
             "url": "https://github.com/symfony/http-foundation.git",
-            "reference": "fedc2f9f618e865c00716201491f52d135d1e854"
+            "reference": "45baabaa45d1ca245f6235f73631ca5976fd179b"
         },
         "dist": {
             "type": "zip",
-            "url": "https://api.github.com/repos/symfony/http-foundation/zipball/fedc2f9f618e865c00716201491f52d135d1e854",
-            "reference": "fedc2f9f618e865c00716201491f52d135d1e854",
+            "url": "https://api.github.com/repos/symfony/http-foundation/zipball/45baabaa45d1ca245f6235f73631ca5976fd179b",
+            "reference": "45baabaa45d1ca245f6235f73631ca5976fd179b",
             "shasum": ""
         },
         "require": {
@@ -672,7 +672,7 @@
         "require-dev": {
             "symfony/expression-language": "~2.4|~3.0.0"
         },
-        "time": "2018-02-19T16:23:47+00:00",
+        "time": "2018-04-30T01:04:05+00:00",
         "type": "library",
         "extra": {
             "branch-alias": {
@@ -707,17 +707,17 @@
     },
     {
         "name": "symfony/polyfill-mbstring",
-        "version": "v1.7.0",
-        "version_normalized": "1.7.0.0",
+        "version": "v1.8.0",
+        "version_normalized": "1.8.0.0",
         "source": {
             "type": "git",
             "url": "https://github.com/symfony/polyfill-mbstring.git",
-            "reference": "78be803ce01e55d3491c1397cf1c64beb9c1b63b"
+            "reference": "3296adf6a6454a050679cde90f95350ad604b171"
         },
         "dist": {
             "type": "zip",
-            "url": "https://api.github.com/repos/symfony/polyfill-mbstring/zipball/78be803ce01e55d3491c1397cf1c64beb9c1b63b",
-            "reference": "78be803ce01e55d3491c1397cf1c64beb9c1b63b",
+            "url": "https://api.github.com/repos/symfony/polyfill-mbstring/zipball/3296adf6a6454a050679cde90f95350ad604b171",
+            "reference": "3296adf6a6454a050679cde90f95350ad604b171",
             "shasum": ""
         },
         "require": {
@@ -726,11 +726,11 @@
         "suggest": {
             "ext-mbstring": "For best performance"
         },
-        "time": "2018-01-30T19:27:44+00:00",
+        "time": "2018-04-26T10:06:28+00:00",
         "type": "library",
         "extra": {
             "branch-alias": {
-                "dev-master": "1.7-dev"
+                "dev-master": "1.8-dev"
             }
         },
         "installation-source": "dist",
@@ -768,27 +768,27 @@
     },
     {
         "name": "symfony/polyfill-php54",
-        "version": "v1.7.0",
-        "version_normalized": "1.7.0.0",
+        "version": "v1.8.0",
+        "version_normalized": "1.8.0.0",
         "source": {
             "type": "git",
             "url": "https://github.com/symfony/polyfill-php54.git",
-            "reference": "84e2b616c197ef400c6d0556a0606cee7c9e21d5"
+            "reference": "6c3a2b84c6025e4ea3f6a19feac35408c64b22e1"
         },
         "dist": {
             "type": "zip",
-            "url": "https://api.github.com/repos/symfony/polyfill-php54/zipball/84e2b616c197ef400c6d0556a0606cee7c9e21d5",
-            "reference": "84e2b616c197ef400c6d0556a0606cee7c9e21d5",
+            "url": "https://api.github.com/repos/symfony/polyfill-php54/zipball/6c3a2b84c6025e4ea3f6a19feac35408c64b22e1",
+            "reference": "6c3a2b84c6025e4ea3f6a19feac35408c64b22e1",
             "shasum": ""
         },
         "require": {
             "php": ">=5.3.3"
         },
-        "time": "2018-01-30T19:27:44+00:00",
+        "time": "2018-04-26T10:06:28+00:00",
         "type": "library",
         "extra": {
             "branch-alias": {
-                "dev-master": "1.7-dev"
+                "dev-master": "1.8-dev"
             }
         },
         "installation-source": "dist",
@@ -828,28 +828,28 @@
     },
     {
         "name": "symfony/polyfill-php55",
-        "version": "v1.7.0",
-        "version_normalized": "1.7.0.0",
+        "version": "v1.8.0",
+        "version_normalized": "1.8.0.0",
         "source": {
             "type": "git",
             "url": "https://github.com/symfony/polyfill-php55.git",
-            "reference": "168371cb3dfb10e0afde96e7c2688be02470d143"
+            "reference": "a39456128377a85f2c5707fcae458678560cba46"
         },
         "dist": {
             "type": "zip",
-            "url": "https://api.github.com/repos/symfony/polyfill-php55/zipball/168371cb3dfb10e0afde96e7c2688be02470d143",
-            "reference": "168371cb3dfb10e0afde96e7c2688be02470d143",
+            "url": "https://api.github.com/repos/symfony/polyfill-php55/zipball/a39456128377a85f2c5707fcae458678560cba46",
+            "reference": "a39456128377a85f2c5707fcae458678560cba46",
             "shasum": ""
         },
         "require": {
             "ircmaxell/password-compat": "~1.0",
             "php": ">=5.3.3"
         },
-        "time": "2018-01-30T19:27:44+00:00",
+        "time": "2018-04-26T10:06:28+00:00",
         "type": "library",
         "extra": {
             "branch-alias": {
-                "dev-master": "1.7-dev"
+                "dev-master": "1.8-dev"
             }
         },
         "installation-source": "dist",
