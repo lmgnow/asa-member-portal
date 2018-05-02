@@ -3,15 +3,16 @@
 	$(document).ready(function(){
 		/********************** Write jQuery/JavaScript Here **********************/
 
+		var asampALB  = '.asamp-login-box';
 		var asampALBA = '.asamp-login-box-activator';
 		if($(asampALBA).length){
 			$('body').on('click', asampALBA, function(e){
-				$(asampALBA).toggleClass('hidden').next().toggleClass('hidden');
+				$(asampALB).toggleClass('hidden');
 					e.stopPropagation();
 			});
 			$('body').on('click', function(e){
-				if(!$('.asamp-login-box').has(e.target).length > 0 && $(asampALBA).hasClass('hidden')){
-					$(asampALBA).toggleClass('hidden').next().toggleClass('hidden');
+				if(!$(asampALB).has(e.target).length > 0 && !$(asampALB).hasClass('hidden')){
+					$(asampALB).toggleClass('hidden');
 					e.stopPropagation();
 				}
 			});

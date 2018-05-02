@@ -1054,6 +1054,13 @@ class ASA_Member_Portal {
 					'payment_Stripe',
 				),
 			),
+			array(
+				'id'    => 'usage',
+				'title' => __( 'Usage', 'asamp' ),
+				'boxes' => array(
+					'instructions',
+				),
+			),
 		);
 		
 		return $tabs;
@@ -1624,6 +1631,22 @@ class ASA_Member_Portal {
 		) );
 		$cmb->object_type( 'options-page' );
 		$boxes[] = $cmb;
+
+		$cmb = new_cmb2_box( array(
+			'id'              => 'instructions',
+			'title'           => __( 'Usage Instructions', 'asamp' ),
+			'show_on'         => $show_on,
+			'display_cb'      => false,
+			'admin_menu_hook' => false,
+		) );
+		$cmb->add_field( array(
+				'name'            => __( 'Usage Instructions', 'asamp' ),
+				'id'              => 'usage_instructions',
+				'type'            => 'title',
+				'render_row_cb'   => array( $this, 'usage_instructions' ),
+			) );
+		$cmb->object_type( 'options-page' );
+		$boxes[] = $cmb;
 		
 		return $boxes;
 	}
@@ -1963,6 +1986,42 @@ class ASA_Member_Portal {
 		} else {
 			error_log( $log );
 		}
+	}
+
+	/**
+	 * Prints output.
+	 * For use on field of type: 'title'.
+	 *
+	 * @param bool $field_args
+	 * @param bool $field
+	 *
+	 * @return void
+	 */
+	public function usage_instructions( $field_args, $field ) {
+		?>
+			<div class="asamp-instructions">
+				<h3>Shortcodes:</h3>
+				<dl>
+					<dt>[asamp_member_profile]</dt>
+					<dd>
+						Renders a form for non-members to register. Members use this form to update their profile.
+					</dd>
+					<dt>[asamp_member_login_box hide="true" link="Text"]</dt>
+					<dd>
+						Renders a login box. Parameters <code>hide</code> and <code>link</code> are optional.
+					</dd>
+					<dt>[asamp_member_payment_form]</dt>
+					<dd>
+						Renders a form for users to activate or renew their membership.
+					</dd>
+					<dt>[asamp_member_directory]</dt>
+					<dd>
+						Renders a list of all members.
+					</dd>
+				</dl>
+				<p>Note: After adding shortcodes to your pages, remember to come back to the settings and tell me which pages your shortcodes are on.</p>
+			</div>
+		<?php
 	}
 
 }

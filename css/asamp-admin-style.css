@@ -17,3 +17,7 @@
 	border-color: rgb(220, 53, 69);
 	color: white;
 }
+
+.asamp-instructions dt {
+	font-weight: bold;
+}
