@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           0.1.4
+ * Version:           1.0.1
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -380,8 +380,7 @@ class ASA_Member_Portal {
 		$prefix = 'asamp_payment_';
 		$output = '';
 
-		//$output .= '<pre>' . print_r( get_editable_roles(), true ) . '</pre>';
-		//$output .= '<pre>' . print_r( $this->options, true ) . '</pre>';
+		//echo( '<pre>' );print_r( $this->options );echo( '</pre>' );
 
 		$cmb = cmb2_get_metabox( $prefix . 'form' );
 
@@ -768,9 +767,11 @@ class ASA_Member_Portal {
 		$gateway = Omnipay::create( str_replace( 'payment_', '', $payment_processor ) );
 		$gateway->initialize( $gateway_init );
 
+		$payment_amount = $this->get_dues_amount_from_role_slug( $sanitized_values[ $prefix . 'member_type' ] );
+
 		try {
 			$response = $gateway->purchase( array(
-				'amount'   => $this->get_dues_amount_from_role_slug( $sanitized_values[ $prefix . 'member_type' ] ),
+				'amount'   => $payment_amount,
 				'currency' => 'USD',
 				'card'     => array(
 					'number'      => $sanitized_values[ $prefix . 'cc_number' ],
@@ -781,8 +782,88 @@ class ASA_Member_Portal {
 			) )->send();
 
 			if ( $response->isSuccessful() ) {
-				wp_redirect( esc_url_raw( add_query_arg( 'payment_received', 'true' ) ) );
-				exit();
+				$payment_id = wp_insert_post( array(
+					'post_type'   => 'dues_payment',
+					'post_author' => 0,
+				), true );
+
+				wp_update_post( get_post( $payment_id ) );
+				update_post_meta( $payment_id, '_asamp_dues_amount',    $payment_amount );
+				update_post_meta( $payment_id, '_asamp_dues_cc_name',   $sanitized_values[ $prefix . 'firstname' ] . ' ' . $sanitized_values[ $prefix . 'lastname' ] );
+				update_post_meta( $payment_id, '_asamp_dues_cc_type',   $this->get_cc_type( $sanitized_values[ $prefix . 'cc_number' ] ) );
+				update_post_meta( $payment_id, '_asamp_dues_cc_number', '************' . substr( $sanitized_values[ $prefix . 'cc_number' ], -4 ) );
+				update_post_meta( $payment_id, '_asamp_dues_cc_expiry', $sanitized_values[ $prefix . 'cc_year'  ] . '-' . $sanitized_values[ $prefix . 'cc_month'  ] );
+				
+				if ( $this->is_member() ) {
+					update_post_meta( $payment_id, '_asamp_dues_member_account', $this->user()->user_login );
+					$this->user->role = $sanitized_values[ $prefix . 'member_type' ];
+					wp_update_user( $this->user );
+					update_user_meta( $this->user()->ID, 'asamp_user_member_type', $sanitized_values[ $prefix . 'member_type' ] );
+					update_user_meta( $this->user()->ID, 'asamp_user_member_status', 'active' );
+					if ( strtotime( $this->user_meta()->asamp_user_member_expiry ) > strtotime( date( 'Y-m-d' ) ) ) {
+						update_user_meta( $this->user()->ID, 'asamp_user_member_expiry', date( 'Y-m-d', strtotime( $this->user_meta()->asamp_user_member_expiry . ' + 1 Year' ) ) );
+					} else {
+						update_user_meta( $this->user()->ID, 'asamp_user_member_expiry', date( 'Y-m-d', strtotime( date( 'Y-m-d' ) . ' + 1 Year' ) ) );
+					}
+				}
+
+				$blog_name = get_bloginfo( 'name' );
+				$headers   = array( 'Content-Type: text/html; charset=UTF-8' );
+				$to        = array();
+				$contacts  = $this->options[ 'admin_contacts' ];
+				if ( is_array( $contacts ) ) {
+					foreach ( $contacts as $contact ) {
+						if ( ! empty( $contact[ 'name' ] ) ) {
+							$contact[ 'email' ] = $contact[ 'name' ] . ' <' . $contact[ 'email' ] . '>';
+						}
+						if ( $contact[ 'type' ] === 'to' ) {
+							$to[] = $contact[ 'email' ];
+						} else {
+							$headers[] = $contact[ 'type' ] . ': ' . $contact[ 'email' ];
+						}
+					}
+				}
+
+				$subject = __( 'New Dues Payment From: ', 'asamp' ) . $this->user_meta()->asamp_user_company_name . ' - ' . $blog_name;
+				$headers = array_unique( $headers );
+				$to      = array_unique( $to );
+				if ( empty( $to ) ) {
+					$to = array( $blog_name . ' <' . get_bloginfo( 'admin_email' ) . '>' );
+				}
+				ob_start();
+				?>
+					<h1><?php echo $subject; ?></h1>
+					<h2><?php _e( 'Member Information', 'asamp' ); ?></h2>
+					<dl>
+						<dt><?php _e( 'Company Name', 'asamp' ); ?>: </dt><dd><?php echo $this->user_meta()->asamp_user_company_name; ?></dd>
+					</dl>
+					<h2><?php _e( 'Credit Card Information', 'asamp' ); ?></h2>
+					<dl>
+						<dt><?php _e( 'Amount', 'asamp' ); ?>: </dt><dd>$<?php echo $payment_amount; ?></dd>
+						<dt><?php _e( 'Name on Card', 'asamp' ); ?>: </dt><dd><?php echo $sanitized_values[ $prefix . 'firstname' ] . ' ' . $sanitized_values[ $prefix . 'lastname' ]; ?></dd>
+						<dt><?php _e( 'Credit Card', 'asamp' ); ?>: </dt><dd>****-****-****-<?php echo substr( $sanitized_values[ $prefix . 'cc_number' ], -4 ); ?></dd>
+					</dl>
+				<?php
+				$message = ob_get_clean();
+
+				// admin email
+				wp_mail( $to, $subject, $message, $headers );
+
+				// user email
+				$headers = array( 'Content-Type: text/html; charset=UTF-8' );
+				$to      = array( $this->user_meta()->asamp_user_company_name . ' <' . $this->user_meta()->asamp_user_company_email . '>' );
+				$subject = __( 'Receipt for your Dues Payment to: ', 'asamp' ) . $blog_name;
+				$sent    = false;
+				if ( wp_mail( $to, $subject, $message, $headers ) ) {
+					$sent = true;
+				}
+
+				if ( ! is_wp_error( $payment_id ) && $sent ) {
+					wp_redirect( esc_url_raw( add_query_arg( 'payment_received', 'true' ) ) );
+					exit();
+				} else {
+					return $cmb->prop( 'submission_error', __( 'We have recieved your payment, but there was a problem sending your receipt. Please contact us for a receipt.', 'asamp' ) );
+				}
 			} elseif ( $response->isRedirect() ) {
 				// TODO: find out how this works.
 				$response->redirect();
@@ -795,6 +876,35 @@ class ASA_Member_Portal {
 		}
 
 		return $cmb->prop( 'submission_error', __( 'We are experiencing technical difficulties. Please try again later or contact us.', 'asamp' ) );
+	}
+
+	/**
+	 * Returns credit card type.
+	 *
+	 * @param str $cc
+	 *
+	 * @return str
+	 */
+	function get_cc_type( $cc ) {
+		if ( empty( $cc ) ) return false;
+
+		$patterns = array(
+			'Visa'             => '/^4[0-9]{12}(?:[0-9]{3})?$/',
+			'MasterCard'       => '/^5[1-5][0-9]{14}$/',
+			'American Express' => '/^3[47][0-9]{13}$/',
+			'Diners Club'      => '/^3(?:0[0-5]|[68][0-9])[0-9]{11}$/',
+			'Discover'         => '/^6(?:011|5[0-9]{2})[0-9]{12}$/',
+			'JCB'              => '/^(?:2131|1800|35\d{3})\d{11}$/',
+			'Other'            => '/^(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3[47][0-9]{13}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\d{3})\d{11})$/',
+		);
+
+		foreach ( $patterns as $k => $v ) {
+			if ( preg_match( $v, $cc ) ) {
+				return $k;
+			}
+		}
+
+		return 'Other';
 	}
 
 	/**
@@ -1105,15 +1215,40 @@ class ASA_Member_Portal {
 		) );
 
 		$cmb->add_field( array(
-			'name' => __( 'Amount', 'asamp' ),
-			'id'   => $prefix . 'amount',
-			'type' => 'text_money',
+			'name'        => __( 'Amount', 'asamp' ),
+			'id'          => $prefix . 'amount',
+			'type'        => 'text_money',
 		) );
 
 		$cmb->add_field( array(
-			'name' => __( 'Name on Card', 'asamp' ),
-			'id'   => $prefix . 'cc_name',
-			'type' => 'text',
+			'name'        => __( 'Name on Card', 'asamp' ),
+			'id'          => $prefix . 'cc_name',
+			'type'        => 'text',
+		) );
+
+		$cmb->add_field( array(
+			'name'        => __( 'Member Account', 'asamp' ),
+			'description' => 'This must be an exact and valid username.',
+			'id'          => $prefix . 'member_account',
+			'type'        => 'text',
+		) );
+
+		$cmb->add_field( array(
+			'name'        => __( 'Card Type', 'asamp' ),
+			'id'          => $prefix . 'cc_type',
+			'type'        => 'text',
+		) );
+
+		$cmb->add_field( array(
+			'name'        => __( 'Card Number', 'asamp' ),
+			'id'          => $prefix . 'cc_number',
+			'type'        => 'text',
+		) );
+
+		$cmb->add_field( array(
+			'name'        => __( 'Card Expiration', 'asamp' ),
+			'id'          => $prefix . 'cc_expiry',
+			'type'        => 'text',
 		) );
 
 	}
@@ -1676,6 +1811,15 @@ class ASA_Member_Portal {
 				'active'   => __( 'Active',   'asamp' ),
 				'inactive' => __( 'Inactive', 'asamp' ),
 			),
+		) );
+
+		$cmb_user->add_field( array(
+			'name'            => __( 'ASA Membership Expiration Date', 'asamp' ),
+			'id'              => $prefix . 'member_expiry',
+			'type'            => 'text_date',
+			'on_front'        => false,
+			'default'         => date( 'Y-m-d' ),
+			'date_format'     => 'Y-m-d',
 		) );
 
 		$cmb_user->add_field( array(
