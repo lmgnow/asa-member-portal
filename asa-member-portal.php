@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           1.0.1
+ * Version:           1.0.2
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -61,7 +61,7 @@ class ASA_Member_Portal {
 		add_action( 'user_register',  array( $this, 'set_user_options' ), 10, 1 );
 		add_action( 'profile_update', array( $this, 'set_user_options' ), 10, 1 );
 
-		add_action( 'save_post_dues_payment', array( $this, 'dues_payment_save' ), 10, 3 );
+		add_action( 'save_post_asamp_dues_payment', array( $this, 'dues_payment_save' ), 10, 3 );
 
 		add_action( 'cmb2_init',       array( $this, 'user_meta_init'        ) );
 		add_action( 'cmb2_init',       array( $this, 'payment_form_init'     ) );
@@ -783,7 +783,7 @@ class ASA_Member_Portal {
 
 			if ( $response->isSuccessful() ) {
 				$payment_id = wp_insert_post( array(
-					'post_type'   => 'dues_payment',
+					'post_type'   => 'asamp_dues_payment',
 					'post_author' => 0,
 				), true );
 
@@ -1200,7 +1200,7 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * Adds custom fields to custom post type 'dues_payment'.
+	 * Adds custom fields to custom post type 'asamp_dues_payment'.
 	 *
 	 * @return void
 	 */
@@ -1210,7 +1210,7 @@ class ASA_Member_Portal {
 		$cmb = new_cmb2_box( array(
 			'id'           => $prefix . 'edit',
 			'title'        => __( 'Payment Details', 'asamp' ),
-			'object_types' => array( 'dues_payment' ),
+			'object_types' => array( 'asamp_dues_payment' ),
 			'show_names'   => true,
 		) );
 
@@ -1254,7 +1254,7 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * For post type 'dues_payment'. Sets post_title, post_name, and post_status.
+	 * For post type 'asamp_dues_payment'. Sets post_title, post_name, and post_status.
 	 *
 	 * @param int  $post_id
 	 * @param post $post The post object.
@@ -1321,7 +1321,7 @@ class ASA_Member_Portal {
 			),
 		);
 
-		register_post_type( 'dues_payment', $args );
+		register_post_type( 'asamp_dues_payment', $args );
 	}
 
 	/**
