@@ -19,6 +19,7 @@ use Omnipay\Omnipay;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
+	private $version          = '1.0.4'; // str             Current version.
 	private $plugin_file_path = '';      // str             Absolute path to this file.      (with trailing slash)
 	private $plugin_dir_path  = '';      // str             Absolute path to this directory. (with trailing slash)
 	private $plugin_dir_url   = '';      // str             URL of this directory.           (with trailing slash)
@@ -43,8 +44,8 @@ class ASA_Member_Portal {
 		require_once $this->plugin_dir_path . 'includes/vendor/webdevstudios/cmb2/init.php';
 		require_once $this->plugin_dir_path . 'includes/vendor/rogerlos/cmb2-metatabs-options/cmb2_metatabs_options.php';
 
-		require_once $this->plugin_dir_path . 'includes/pallazzio-wpghu/pallazzio-wpghu.php';
-		new Pallazzio_WPGHU( $this->plugin_dir_path . wp_basename( $this->plugin_file_path ), 'lmgnow' );
+		//require_once $this->plugin_dir_path . 'includes/pallazzio-wpghu/pallazzio-wpghu.php';
+		//new Pallazzio_WPGHU( $this->plugin_dir_path . wp_basename( $this->plugin_file_path ), 'lmgnow' );
 
 		$this->options = get_option( 'asa_member_portal' );
 
@@ -54,9 +55,9 @@ class ASA_Member_Portal {
 		add_action( 'wp_enqueue_scripts',    array( $this, 'asamp_enqueue' )        );
 		add_action( 'admin_enqueue_scripts', array( $this, 'admin_enqueue' ), 10, 1 );
 
-		add_action(    'add_option_asa_member_portal', array( $this, 'create_roles'  ), 10, 2 );
-		add_action( 'update_option_asa_member_portal', array( $this, 'create_roles'  ), 10, 2 );
-		add_action( 'delete_option_asa_member_portal', array( $this, 'create_roles'  ), 10, 2 );
+		add_action(    'add_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
+		add_action( 'update_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
+		add_action( 'delete_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
 
 		add_action( 'user_register',  array( $this, 'set_user_options' ), 10, 1 );
 		add_action( 'profile_update', array( $this, 'set_user_options' ), 10, 1 );
@@ -73,9 +74,10 @@ class ASA_Member_Portal {
 		add_action( 'cmb2_after_init', array( $this, 'frontend_dues_payment' ) );
 
 		add_action( 'init', array( $this, 'disallow_dashboard_access' ) );
-		add_action( 'init', array( $this, 'get_this_plugin_data'      ) );
 		add_action( 'init', array( $this, 'register_post_types'       ) );
 		add_action( 'init', array( $this, 'register_shortcodes'       ) );
+
+		add_action( 'admin_init', array( $this, 'get_this_plugin_data' ) );
 
 		add_filter( 'plugin_action_links_' . plugin_basename( $this->plugin_file_path ), array( $this, 'add_settings_link' ), 10, 1 );
 	}
@@ -105,6 +107,7 @@ class ASA_Member_Portal {
 	 */
 	public function get_this_plugin_data() {
 		$this->plugin_data = get_plugin_data( $this->plugin_file_path );
+		$this->version     = $this->plugin_data[ 'Version' ];
 	}
 
 	/**
@@ -113,8 +116,8 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function asamp_enqueue() {
-		wp_enqueue_style(  'asamp_style',  $this->plugin_dir_url . 'css/asamp-style.css', array(          ), $this->plugin_data[ 'Version' ], 'screen' );
-		wp_enqueue_script( 'asamp_script', $this->plugin_dir_url .  'js/asamp-script.js', array( 'jquery' ), $this->plugin_data[ 'Version' ], true     );
+		wp_enqueue_style(  'asamp_style',  $this->plugin_dir_url . 'css/asamp-style.css', array(          ), $this->version, 'screen' );
+		wp_enqueue_script( 'asamp_script', $this->plugin_dir_url .  'js/asamp-script.js', array( 'jquery' ), $this->version, true     );
 	}
 
 	/**
@@ -128,8 +131,8 @@ class ASA_Member_Portal {
 		$hooks = array( 'settings_page_asa_member_portal', 'user-new.php', 'profile.php' );
 		foreach ( $hooks as $v ) {
 			if ( $v === $hook ) {
-				wp_enqueue_style(  'asamp_admin_style',  $this->plugin_dir_url . 'css/asamp-admin-style.css', array(          ), $this->plugin_data[ 'Version' ], 'screen' );
-				wp_enqueue_script( 'asamp_admin_script', $this->plugin_dir_url .  'js/asamp-admin-script.js', array( 'jquery' ), $this->plugin_data[ 'Version' ], true     );
+				wp_enqueue_style(  'asamp_admin_style',  $this->plugin_dir_url . 'css/asamp-admin-style.css', array(          ), $this->version, 'screen' );
+				wp_enqueue_script( 'asamp_admin_script', $this->plugin_dir_url .  'js/asamp-admin-script.js', array( 'jquery' ), $this->version, true     );
 			}
 		}
 	}
