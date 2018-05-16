@@ -174,7 +174,25 @@ form[id^='asamp'] .cmb-repeat > .cmb-td .cmb-add-row-button {
 	border: 1px solid #f5c6cb;
 	border-radius: 4px;
 	padding: 0.6em;
-	margin: 0;
+	margin: 0 0 1em 0;
+}
+
+.asamp-submission-warning-message {
+	background-color: #fcf8e3;
+	color: #8a6d3b;
+	border: 1px solid #faf2cc;
+	border-radius: 4px;
+	padding: 0.6em;
+	margin: 0 0 1em 0;
+}
+
+.asamp-submission-success-message {
+	background-color: #dff0d8;
+	color: #3c763d;
+	border: 1px solid #d0e9c6;
+	border-radius: 4px;
+	padding: 0.6em;
+	margin: 0 0 1em 0;
 }
 
 .asamp-validation-error {

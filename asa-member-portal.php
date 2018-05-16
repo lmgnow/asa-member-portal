@@ -182,17 +182,17 @@ class ASA_Member_Portal {
 	 *
 	 * @param str $role
 	 *
-	 * @return array $roles
+	 * @return void
 	 */
 	private function set_member_role( $role ) {
 		$roles = (array) $this->user()->roles;
 		foreach ( $roles as $k => $v ) {
-			if ( false !== strpos( $k, 'asamp_' ) ) {
-				$roles[ $k ] = $role;
+			if ( false !== strpos( $v, 'asamp_' ) ) {
+				$this->user->remove_role( $v );
 			}
 		}
 
-		return $roles;
+		$this->user->add_role( $role );
 	}
 
 	/**
@@ -419,8 +419,18 @@ class ASA_Member_Portal {
 
 		$cmb = cmb2_get_metabox( $prefix . 'form' );
 
-		if ( ( $error = $cmb->prop( 'submission_error' ) ) ) {
+		if ( $error = $cmb->prop( 'submission_error' ) ) {
 			$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>' . $error . '</strong>' ) . '</div>';
+		} else {
+			if ( 'true' === $_GET[ 'payment_received' ] ) {
+				$output .= '<div class="alert alert-success asamp-submission-success-message">' . __( 'Thank you, your payment has been recieved.', 'asamp' ) . '</div>';
+			}
+
+			if ( 'true' === $_GET[ 'email_sent' ] ) {
+				$output .= '<div class="alert alert-success asamp-submission-success-message">' . __( 'A receipt has been sent to the company email address we have on file.', 'asamp' ) . '</div>';
+			} else if ( 'false' === $_GET[ 'email_sent' ] ) {
+				$output .= '<div class="alert alert-warning asamp-submission-warning-message">' . __( 'There was a problem sending email. Please contact us for a receipt.', 'asamp' ) . '</div>';
+			}
 		}
 
 		$output .= cmb2_get_metabox_form( $cmb, '', array( 'save_button' => __( 'Submit Payment', 'asamp' ) ) );
@@ -815,7 +825,7 @@ class ASA_Member_Portal {
 				),
 			) )->send();
 
-			if ( $response->isSuccessful() || '4111111111111111' === $sanitized_values[ $prefix . 'cc_number' ] ) {
+			if ( $response->isSuccessful() /*|| '4111111111111111' === $sanitized_values[ $prefix . 'cc_number' ]*/ ) {
 				$payment_id = wp_insert_post( array(
 					'post_type'   => 'asamp_dues_payment',
 					'post_author' => 0,
@@ -830,7 +840,7 @@ class ASA_Member_Portal {
 				
 				if ( $this->is_member() ) {
 					update_post_meta( $payment_id, '_asamp_dues_member_account', $this->user()->user_login );
-					$this->user->roles = $this->set_member_role( $sanitized_values[ $prefix . 'member_type' ] );
+					$this->set_member_role( $sanitized_values[ $prefix . 'member_type' ] );
 					wp_update_user( $this->user );
 					update_user_meta( $this->user()->ID, 'asamp_user_member_type', $sanitized_values[ $prefix . 'member_type' ] );
 					update_user_meta( $this->user()->ID, 'asamp_user_member_status', 'active' );
@@ -893,12 +903,17 @@ class ASA_Member_Portal {
 					$sent = true;
 				}
 
-				if ( ! is_wp_error( $payment_id ) && $sent ) {
-					wp_redirect( esc_url_raw( add_query_arg( 'payment_received', 'true' ) ) );
-					exit();
-				} else {
-					return $cmb->prop( 'submission_error', __( 'We have recieved your payment, but there was a problem sending your receipt. Please contact us for a receipt.', 'asamp' ) );
+				$redirect = ! empty( $this->options[ 'page_payment_form' ] ) ? get_the_permalink( $this->options[ 'page_payment_form' ] ) : home_url();
+				if ( ! is_wp_error( $payment_id ) ) {
+					$redirect = add_query_arg( 'payment_received', 'true', $redirect );
 				}
+				if ( $sent ) {
+					$redirect = add_query_arg( 'email_sent', 'true', $redirect );
+				} else {
+					$redirect = add_query_arg( 'email_sent', 'false', $redirect );
+				}
+				wp_redirect( esc_url_raw( $redirect ) );
+				exit();
 			} elseif ( $response->isRedirect() ) {
 				// TODO: find out how this works.
 				$response->redirect();
