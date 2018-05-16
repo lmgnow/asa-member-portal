@@ -1,41 +1,151 @@
-form[id^="asamp"] .cmb-type-multicheck-inline > .cmb-td > .cmb2-checkbox-list > li {
+form[id^='asamp'] .cmb-type-multicheck-inline > .cmb-td > .cmb2-checkbox-list > li {
 	width: 100%;
 }
 
 @media only screen and (min-width: 480px) {
-	form[id^="asamp"] .cmb-type-multicheck-inline > .cmb-td > .cmb2-checkbox-list > li {
+	form[id^='asamp'] .cmb-type-multicheck-inline > .cmb-td > .cmb2-checkbox-list > li {
 		width: 50%;
 		float: left;
 	}
 }
 
 @media only screen and (min-width: 960px) {
-	form[id^="asamp"] .cmb-type-multicheck-inline > .cmb-td > .cmb2-checkbox-list > li {
+	form[id^='asamp'] .cmb-type-multicheck-inline > .cmb-td > .cmb2-checkbox-list > li {
 		width: 33.33%;
 	}
 }
 
-form[id^="asamp"] fieldset {
-	border: 1px solid #ccc;
+form[id^='asamp'] fieldset {
+	border: 1px solid #ebebeb;
 	padding: 1em;
 	margin-bottom: 2em;
 }
 
-form[id^="asamp"] fieldset > legend {
-	border: 1px solid #ccc;
+form[id^='asamp'] fieldset > legend {
+	border: 1px solid #ebebeb;
 	padding: 0 0.6em;
-	background-color: #dfdfdf;
 }
 
-form[id^="asamp"] .cmb-type-multicheck-inline > .cmb-td .cmb-multicheck-toggle {
+form[id^='asamp'] .cmb-repeat-group-wrap .cmb-repeat-group-field {
+	border-bottom: none;
+	padding: 0;
+}
+
+form[id^='asamp'] .cmb-repeat-group-wrap .cmb-remove-field-row {
+	margin-bottom: 0;
+}
+
+form[id^='asamp'] .cmb-repeat-group-wrap .cmb-group-title {
+	margin-bottom: 2em;
+}
+
+form[id^='asamp'] .cmb-repeat-group-wrap .cmb-field-list {
+	padding-bottom: 0;
+}
+
+form[id^='asamp'] .cmb-repeat-group-wrap .cmb-td .cmb-th,
+form[id^='asamp'] .cmb-th {
+	width: 30%;
+	min-width: 200px;
+	padding: 5px 0 1em 0;
+	float: left;
+}
+
+form[id^='asamp'] .button-primary[type='submit'] {
+	width: 100%;
+	margin-bottom: 1em;
+}
+
+form#asamp_login_form .cmb-th {
+	padding: 0;
+	width: 100%;
+}
+
+form[id^='asamp'] .cmb-repeat-group-wrap .cmb-td .cmb-td .cmb-td,
+form[id^='asamp'] .cmb-td {
+	width: 70%;
+	padding: 0 0 1em 0;
+	float: left;
+}
+
+form[id^='asamp'] .cmb-repeat-group-wrap .cmb-td,
+form#asamp_login_form .cmb-td {
+	width: 100%;
+}
+
+@media only screen and (max-width: 1065px) {
+	form[id^='asamp'] .cmb-repeat-group-wrap .cmb-td .cmb-th,
+	form[id^='asamp'] .cmb-th {
+		width: 100%;
+		padding: 0;
+	}
+
+	form[id^='asamp'] .cmb-repeat-group-wrap .cmb-td .cmb-td .cmb-td,
+	form[id^='asamp'] .cmb-td {
+		width: 100%;
+	}
+}
+
+form[id^='asamp'] .cmb-td input:not([type='checkbox']) {
+	width: 100%;
+}
+
+form[id^='asamp'] .cmb-type-multicheck-inline > .cmb-th,
+form[id^='asamp'] .cmb-type-multicheck-inline > .cmb-td {
+	width: 100%;
+}
+
+form[id^='asamp'] .cmb-type-multicheck-inline > .cmb-td p {
+	text-align: right;
+	margin-top: -1.2em;
+}
+
+form[id^='asamp'] .cmb-type-multicheck-inline > .cmb-td .cmb-multicheck-toggle {
 	color: #000;
 	background-color: #dfdfdf;
 	cursor: pointer;
 	padding: 0.4em;
 }
 
-form[id^="asamp"] .cmb-repeat > .cmb-td .cmb-add-row-button {
+form[id^='asamp'] .cmb-type-textarea > .cmb-td textarea {
+	width: 100%;
+}
+
+form[id^='asamp'] .cmb-type-select > .cmb-td select {
+	width: 100%;
+}
+
+form[id^='asamp'] .cmb-repeat > .cmb-td .cmb-add-row-button {
 	margin-bottom: 2em;
+}
+
+.asamp-login-box::after {
+	content: '';
+	display: table;
+	clear: both;
+}
+
+.asamp-login-box .asamp-not-a-member {
+	padding: 1em 0;
+	float: left;
+}
+
+.asamp-login-box .asamp-forgot-pw {
+	display: block;
+	clear: both;
+	padding-top: 1em;
+}
+
+.asamp-login-box .btn-success {
+	background-color: #5cb85c;
+}
+
+.asamp-login-box .btn-success:hover {
+	background-color: #449d44;
+}
+
+.asamp-login-box .asamp-register-btn {
+	float: right;
 }
 
 .asamp-login-box.over {

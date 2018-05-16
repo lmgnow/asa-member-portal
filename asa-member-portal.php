@@ -19,7 +19,7 @@ use Omnipay\Omnipay;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $version          = '1.0.5'; // str             Current version.
+	private $version          = '1.0.8'; // str             Current version.
 	private $plugin_file_path = '';      // str             Absolute path to this file.      (with trailing slash)
 	private $plugin_dir_path  = '';      // str             Absolute path to this directory. (with trailing slash)
 	private $plugin_dir_url   = '';      // str             URL of this directory.           (with trailing slash)
@@ -116,6 +116,7 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function asamp_enqueue() {
+		wp_enqueue_style( 'dashicons' );
 		wp_enqueue_style(  'asamp_style',  $this->plugin_dir_url . 'css/asamp-style.css', array(          ), $this->version, 'screen' );
 		wp_enqueue_script( 'asamp_script', $this->plugin_dir_url .  'js/asamp-script.js', array( 'jquery' ), $this->version, true     );
 	}
@@ -366,7 +367,9 @@ class ASA_Member_Portal {
 
 				$output .= cmb2_get_metabox_form( $cmb, '', array( 'save_button' => __( 'Sign In', 'asamp' ) ) );
 
-				$output .= ! empty( $pp = $this->options[ 'page_profile' ] ) ? '<a class="btn btn-success button button-success" href="' . get_the_permalink( $pp ) . '">' . __( 'Register', 'asamp' ) . '</a>' : '';
+				$output .= ! empty( $pp = $this->options[ 'page_profile' ] ) ? '<span class="asamp-not-a-member">' . __( 'Not a Member?', 'asamp' ) . '</span> <a class="btn btn-success button button-success asamp-register-btn" href="' . get_the_permalink( $pp ) . '">' . __( 'Register', 'asamp' ) . '</a>' : '';
+				
+				$output .= '<a class="asamp-forgot-pw" href="' . wp_lostpassword_url() . '">' . __( 'Forgot Password?', 'asamp' ) . '</a>';
 			}
 
 		$output .= '</div></div>';
@@ -1376,11 +1379,23 @@ class ASA_Member_Portal {
 			'save_fields'  => false,
 		) );
 		$cmb->add_field( array(
+			'name'            => __( 'Membership', 'asamp' ),
+			'id'              => $prefix . 'section_member_type',
+			'type'            => 'title',
+			'render_row_cb'   => array( $this, 'open_fieldset' ),
+		) );
+		$cmb->add_field( array(
 			'name'       => ! empty( $this->options[ 'member_type_label' ] ) ? $this->options[ 'member_type_label' ] : $this->get_default_member_type_label(),
 			'id'         => $prefix . 'member_type',
 			'type'       => 'select',
 			'default'    => $this->user()->roles[ 0 ],
 			'options'    => $this->get_asamp_role_select(),
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'Credit Card Info', 'asamp' ),
+			'id'              => $prefix . 'section_cc_info',
+			'type'            => 'title',
+			'render_row_cb'   => array( $this, 'open_fieldset' ),
 		) );
 		$cmb->add_field( array(
 			'name'       => __( 'First Name', 'asamp' ),
@@ -1466,6 +1481,12 @@ class ASA_Member_Portal {
 				'type'    => 'hidden',
 				'default' => wp_create_nonce( $prefix . 'nonce' ),
 			),
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'End Form', 'asamp' ),
+			'id'              => $prefix . 'section_end_form',
+			'type'            => 'title',
+			'render_row_cb'   => array( $this, 'close_fieldset' ),
 		) );
 	}
 
@@ -2072,7 +2093,7 @@ class ASA_Member_Portal {
 
 			if ( $this->is_member() ) {
 				$cmb_user->add_field( array(
-					'name'            => __( 'Login Info', 'asamp' ),
+					'name'            => __( 'Change Password', 'asamp' ),
 					'id'              => $prefix . 'section_login_info',
 					'type'            => 'title',
 					'render_row_cb'   => array( $this, 'open_fieldset' ),
