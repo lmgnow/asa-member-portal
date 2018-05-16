@@ -486,6 +486,7 @@ class ASA_Member_Portal {
 						<?php if ( 'all' === $show ) : ?>
 							
 							<p><a href="tel:<?php echo $meta[ 'asamp_user_company_phone' ]; ?>"><?php echo $meta[ 'asamp_user_company_phone' ]; ?></a></p>
+							<p><a href="tel:<?php echo $meta[ 'asamp_user_company_fax' ]; ?>"><?php echo $meta[ 'asamp_user_company_fax' ]; ?></a></p>
 							<p><a href="mailto:<?php echo $meta[ 'asamp_user_company_email' ]; ?>"><?php echo $meta[ 'asamp_user_company_email' ]; ?></a></p>
 							<address>
 								<?php echo $meta[ 'asamp_user_company_street' ]; ?> <br />
@@ -1041,6 +1042,9 @@ class ASA_Member_Portal {
 			$this->user()->description   = ! empty( $sanitized_values[ $prefix . 'company_description' ] ) ? $sanitized_values[ $prefix . 'company_description' ] : '';
 
 			$user_id = wp_update_user( $this->user() );
+
+			update_user_meta( $user_id, 'first_name', $sanitized_values[ $prefix . 'company_name' ] );
+			update_user_meta( $user_id, 'nickname',   $sanitized_values[ $prefix . 'company_name' ] );
 		} else {
 			$userdata = array(
 				'user_login'           => $sanitized_values[ $prefix . 'login' ],
@@ -1057,6 +1061,10 @@ class ASA_Member_Portal {
 			);
 
 			$user_id = wp_insert_user( $userdata );
+
+			update_user_meta( $user_id, 'first_name',                   $sanitized_values[ $prefix . 'company_name' ] );
+			update_user_meta( $user_id, 'nickname',                     $sanitized_values[ $prefix . 'company_name' ] );
+			update_user_meta( $user_id, $prefix . 'member_date_joined', date( 'Y-m-d' ) );
 
 			wp_signon( array(
 				'user_login'    => $userdata[ 'user_login' ],
@@ -1134,6 +1142,12 @@ class ASA_Member_Portal {
 		if ( strlen( $phone ) === 11) $phone = preg_replace( '/^1/', '', $phone );
 		if ( strlen( $phone ) !== 10 && ! empty( $sanitized_values[ $prefix . 'company_phone' ] ) ) {
 			$bad_fields[ $prefix . 'company_phone' ] = 'Please enter a 10-digit phone number.';
+		}
+
+		$fax = preg_replace( '/[^0-9]/', '', $sanitized_values[ $prefix . 'company_fax' ] );
+		if ( strlen( $fax ) === 11) $fax = preg_replace( '/^1/', '', $fax );
+		if ( strlen( $fax ) !== 10 && ! empty( $sanitized_values[ $prefix . 'company_fax' ] ) ) {
+			$bad_fields[ $prefix . 'company_fax' ] = 'Please enter a 10-digit fax number.';
 		}
 
 		if ( ! is_email( $sanitized_values[ $prefix . 'company_email' ] ) ) {
@@ -1888,6 +1902,15 @@ class ASA_Member_Portal {
 			) );
 
 			$cmb_user->add_field( array(
+				'name'            => __( 'ASA Membership Join Date', 'asamp' ),
+				'id'              => $prefix . 'member_date_joined',
+				'type'            => 'text_date',
+				//'on_front'        => false,
+				'default'         => date( 'Y-m-d' ),
+				'date_format'     => 'Y-m-d',
+			) );
+
+			$cmb_user->add_field( array(
 				'name'            => __( 'ASA Membership Expiration Date', 'asamp' ),
 				'id'              => $prefix . 'member_expiry',
 				'type'            => 'text_date',
@@ -1957,6 +1980,12 @@ class ASA_Member_Portal {
 		$cmb_user->add_field( array(
 			'name'            => __( 'Company Phone', 'asamp' ),
 			'id'              => $prefix . 'company_phone',
+			'type'            => 'text',
+		) );
+
+		$cmb_user->add_field( array(
+			'name'            => __( 'Company Fax', 'asamp' ),
+			'id'              => $prefix . 'company_fax',
 			'type'            => 'text',
 		) );
 
