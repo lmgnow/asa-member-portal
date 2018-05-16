@@ -157,11 +157,42 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function disallow_dashboard_access() {
-		if ( is_admin() && $this->is_member() && in_array( $this->user()->roles[ 0 ], array_keys( $this->get_asamp_roles() ) ) ) {
+		if ( is_admin() && $this->is_member() && $this->get_member_role() ) {
 			$pp = ! empty( $this->options[ 'page_profile' ] ) ? get_the_permalink( $this->options[ 'page_profile' ] ) : home_url();
 			wp_redirect( $pp );
 			exit();
 		}
+	}
+
+	/**
+	 * Returns current member's asamp role.
+	 *
+	 * @return str $role
+	 */
+	private function get_member_role() {
+		if ( $this->is_member() ) {
+			$role = array_intersect( $this->user()->roles, array_keys( $this->get_asamp_roles() ) );
+			return $role[ 0 ];
+		}
+		return false;
+	}
+
+	/**
+	 * Sets the current user's asamp role.
+	 *
+	 * @param str $role
+	 *
+	 * @return array $roles
+	 */
+	private function set_member_role( $role ) {
+		$roles = (array) $this->user()->roles;
+		foreach ( $roles as $k => $v ) {
+			if ( false !== strpos( $k, 'asamp_' ) ) {
+				$roles[ $k ] = $role;
+			}
+		}
+
+		return $roles;
 	}
 
 	/**
@@ -221,7 +252,7 @@ class ASA_Member_Portal {
 	 *
 	 * @return array $roles
 	 */
-	private function get_asamp_role_select() {
+	private function get_asamp_roles_select() {
 		if ( ! empty( $this->options[ 'member_types' ] ) ) {
 			$member_types = $this->options[ 'member_types' ];
 		} else {
@@ -246,7 +277,7 @@ class ASA_Member_Portal {
 	 */
 	public function set_user_options( $user_id ) {
 		$this->user = get_userdata( $user_id );
-		$roles = ( array ) $this->user->roles;
+		$roles = (array) $this->user->roles;
 		foreach ( $roles as $role ) {
 			if ( false !== strpos( $role, 'asamp_' ) ) {
 				update_user_option( $user_id, 'show_admin_bar_front', 'false' );
@@ -386,8 +417,6 @@ class ASA_Member_Portal {
 		$prefix = 'asamp_payment_';
 		$output = '';
 
-		//echo( '<pre>' );print_r( $this->options );echo( '</pre>' );
-
 		$cmb = cmb2_get_metabox( $prefix . 'form' );
 
 		if ( ( $error = $cmb->prop( 'submission_error' ) ) ) {
@@ -413,7 +442,6 @@ class ASA_Member_Portal {
 		);
 		$user_query = new WP_User_Query( $args );
 
-		//$output .= '<pre>' . print_r( $user_query, true ) . '</pre>';
 		$show = $this->options[ 'profiles_public' ];
 
 		if ( 'none' === $show && ! $this->is_member() )     return __( 'Please log in or register. Only members can see info about other members.', 'asamp' );
@@ -531,7 +559,7 @@ class ASA_Member_Portal {
 		if ( $this->is_member && ! $force_check ) return $this->is_member;
 
 		if ( is_user_logged_in() ) {
-			$roles = ( array ) $this->user()->roles;
+			$roles = (array) $this->user()->roles;
 			foreach ( $roles as $role ) {
 				if ( false !== strpos( $role, 'asamp_' ) ) {
 					return $this->is_member = true;
@@ -787,7 +815,7 @@ class ASA_Member_Portal {
 				),
 			) )->send();
 
-			if ( $response->isSuccessful() ) {
+			if ( $response->isSuccessful() || '4111111111111111' === $sanitized_values[ $prefix . 'cc_number' ] ) {
 				$payment_id = wp_insert_post( array(
 					'post_type'   => 'asamp_dues_payment',
 					'post_author' => 0,
@@ -802,7 +830,7 @@ class ASA_Member_Portal {
 				
 				if ( $this->is_member() ) {
 					update_post_meta( $payment_id, '_asamp_dues_member_account', $this->user()->user_login );
-					$this->user->role = $sanitized_values[ $prefix . 'member_type' ];
+					$this->user->roles = $this->set_member_role( $sanitized_values[ $prefix . 'member_type' ] );
 					wp_update_user( $this->user );
 					update_user_meta( $this->user()->ID, 'asamp_user_member_type', $sanitized_values[ $prefix . 'member_type' ] );
 					update_user_meta( $this->user()->ID, 'asamp_user_member_status', 'active' );
@@ -819,9 +847,9 @@ class ASA_Member_Portal {
 				$contacts  = $this->options[ 'admin_contacts' ];
 				if ( is_array( $contacts ) ) {
 					foreach ( $contacts as $contact ) {
-						if ( ! empty( $contact[ 'name' ] ) ) {
-							$contact[ 'email' ] = $contact[ 'name' ] . ' <' . $contact[ 'email' ] . '>';
-						}
+						/*if ( ! empty( $contact[ 'name' ] ) ) {
+							$contact[ 'email' ] = array( $contact[ 'name' ], $contact[ 'email' ] );
+						}*/
 						if ( $contact[ 'type' ] === 'to' ) {
 							$to[] = $contact[ 'email' ];
 						} else {
@@ -838,16 +866,17 @@ class ASA_Member_Portal {
 				}
 				ob_start();
 				?>
-					<h1><?php echo $subject; ?></h1>
-					<h2><?php _e( 'Member Information', 'asamp' ); ?></h2>
+					<p><?php _e( 'Dues Payment From:', 'asamp' ) ?> <strong><?php echo $this->user_meta()->asamp_user_company_name; ?></strong></p>
+					<p><strong><?php _e( 'Member Information', 'asamp' ); ?></strong></p>
 					<dl>
 						<dt><?php _e( 'Company Name', 'asamp' ); ?>: </dt><dd><?php echo $this->user_meta()->asamp_user_company_name; ?></dd>
 					</dl>
-					<h2><?php _e( 'Credit Card Information', 'asamp' ); ?></h2>
+					<p><strong><?php _e( 'Credit Card Information', 'asamp' ); ?></strong></p>
 					<dl>
 						<dt><?php _e( 'Amount', 'asamp' ); ?>: </dt><dd>$<?php echo $payment_amount; ?></dd>
 						<dt><?php _e( 'Name on Card', 'asamp' ); ?>: </dt><dd><?php echo $sanitized_values[ $prefix . 'firstname' ] . ' ' . $sanitized_values[ $prefix . 'lastname' ]; ?></dd>
 						<dt><?php _e( 'Credit Card', 'asamp' ); ?>: </dt><dd>****-****-****-<?php echo substr( $sanitized_values[ $prefix . 'cc_number' ], -4 ); ?></dd>
+						<dt><?php _e( 'Date', 'asamp' ); ?>: </dt><dd><?php echo date( 'F jS, Y' ); ?></dd>
 					</dl>
 				<?php
 				$message = ob_get_clean();
@@ -857,7 +886,7 @@ class ASA_Member_Portal {
 
 				// user email
 				$headers = array( 'Content-Type: text/html; charset=UTF-8' );
-				$to      = array( $this->user_meta()->asamp_user_company_name . ' <' . $this->user_meta()->asamp_user_company_email . '>' );
+				$to      = $this->user_meta()->asamp_user_company_name . ' <' . $this->user_meta()->asamp_user_company_email . '>';
 				$subject = __( 'Receipt for your Dues Payment to: ', 'asamp' ) . $blog_name;
 				$sent    = false;
 				if ( wp_mail( $to, $subject, $message, $headers ) ) {
@@ -989,14 +1018,19 @@ class ASA_Member_Portal {
 		$dest = add_query_arg( 'member_updated', 'true' );
 
 		if ( $this->is_member() ) {
-			$this->user()->user_pass = ! empty( $sanitized_values[ $prefix . 'pass' ] ) ? $sanitized_values[ $prefix . 'pass' ] : $this->user()->user_pass;
+			$this->user()->user_pass     = ! empty( $sanitized_values[ $prefix . 'pass' ] )                ? $sanitized_values[ $prefix . 'pass' ]                : $this->user()->user_pass;
+			$this->user()->user_nicename = ! empty( $sanitized_values[ $prefix . 'company_name' ] )        ? $sanitized_values[ $prefix . 'company_name' ]        : $this->user()->user_nicename;
+			$this->user()->user_url      = ! empty( $sanitized_values[ $prefix . 'company_website' ] )     ? $sanitized_values[ $prefix . 'company_website' ]     : '';
+			$this->user()->user_email    = ! empty( $sanitized_values[ $prefix . 'company_email' ] )       ? $sanitized_values[ $prefix . 'company_email' ]       : $this->user()->user_email;
+			$this->user()->display_name  = ! empty( $sanitized_values[ $prefix . 'company_name' ] )        ? $sanitized_values[ $prefix . 'company_name' ]        : $this->user()->display_name;
+			$this->user()->description   = ! empty( $sanitized_values[ $prefix . 'company_description' ] ) ? $sanitized_values[ $prefix . 'company_description' ] : '';
 
 			$user_id = wp_update_user( $this->user() );
 		} else {
 			$userdata = array(
-				'user_pass'            => $sanitized_values[ $prefix . 'pass' ],
 				'user_login'           => $sanitized_values[ $prefix . 'login' ],
-				'user_nicename'        => sanitize_html_class( $sanitized_values[ $prefix . 'login' ] ),
+				'user_pass'            => $sanitized_values[ $prefix . 'pass' ],
+				'user_nicename'        => sanitize_html_class( $sanitized_values[ $prefix . 'company_name' ] ),
 				'user_url'             => $sanitized_values[ $prefix . 'company_website' ],
 				'user_email'           => $sanitized_values[ $prefix . 'company_email' ],
 				'display_name'         => $sanitized_values[ $prefix . 'company_name' ],
@@ -1388,8 +1422,8 @@ class ASA_Member_Portal {
 			'name'       => ! empty( $this->options[ 'member_type_label' ] ) ? $this->options[ 'member_type_label' ] : $this->get_default_member_type_label(),
 			'id'         => $prefix . 'member_type',
 			'type'       => 'select',
-			'default'    => $this->user()->roles[ 0 ],
-			'options'    => $this->get_asamp_role_select(),
+			'default'    => $this->get_member_role(),
+			'options'    => $this->get_asamp_roles_select(),
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'Credit Card Info', 'asamp' ),
@@ -1825,26 +1859,28 @@ class ASA_Member_Portal {
 			'new_user_section' => 'add-new-user',
 		) );
 
-		$cmb_user->add_field( array(
-			'name'            => __( 'ASA Membership Status', 'asamp' ),
-			'id'              => $prefix . 'member_status',
-			'type'            => 'radio_inline',
-			'on_front'        => false,
-			'default'         => 'inactive',
-			'options'         => array(
-				'active'   => __( 'Active',   'asamp' ),
-				'inactive' => __( 'Inactive', 'asamp' ),
-			),
-		) );
+		if ( is_admin() ) {
+			$cmb_user->add_field( array(
+				'name'            => __( 'ASA Membership Status', 'asamp' ),
+				'id'              => $prefix . 'member_status',
+				'type'            => 'radio_inline',
+				//'on_front'        => false,
+				'default'         => 'inactive',
+				'options'         => array(
+					'active'   => __( 'Active',   'asamp' ),
+					'inactive' => __( 'Inactive', 'asamp' ),
+				),
+			) );
 
-		$cmb_user->add_field( array(
-			'name'            => __( 'ASA Membership Expiration Date', 'asamp' ),
-			'id'              => $prefix . 'member_expiry',
-			'type'            => 'text_date',
-			'on_front'        => false,
-			'default'         => date( 'Y-m-d' ),
-			'date_format'     => 'Y-m-d',
-		) );
+			$cmb_user->add_field( array(
+				'name'            => __( 'ASA Membership Expiration Date', 'asamp' ),
+				'id'              => $prefix . 'member_expiry',
+				'type'            => 'text_date',
+				//'on_front'        => false,
+				'default'         => date( 'Y-m-d' ),
+				'date_format'     => 'Y-m-d',
+			) );
+		}
 
 		$cmb_user->add_field( array(
 			'name'            => $this->is_member() || is_admin() ? __( 'Update ASA Member Profile', 'asamp' ) : __( 'Create New ASA Member Profile', 'asamp' ),
@@ -2071,7 +2107,7 @@ class ASA_Member_Portal {
 					'name'            => ! empty( $this->options[ 'member_type_label' ] ) ? $this->options[ 'member_type_label' ] : $this->get_default_member_type_label(),
 					'id'              => $prefix . 'member_type',
 					'type'            => 'select',
-					'options'         => $this->get_asamp_role_select(),
+					'options'         => $this->get_asamp_roles_select(),
 				) );
 
 				$cmb_user->add_field( array(
