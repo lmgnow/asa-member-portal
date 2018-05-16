@@ -14,4 +14,5 @@ return array(
     'Omnipay\\Stripe\\' => array($vendorDir . '/omnipay/stripe/src'),
     'Omnipay\\Payflow\\' => array($vendorDir . '/omnipay/payflow/src'),
     'Omnipay\\PayPal\\' => array($vendorDir . '/omnipay/paypal/src'),
+    'League\\Csv\\' => array($vendorDir . '/league/csv/src'),
 );

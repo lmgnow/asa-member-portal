@@ -28,6 +28,10 @@ class ComposerStaticInit9efbec0181f850964033dcbe9773712f
             'Omnipay\\Payflow\\' => 16,
             'Omnipay\\PayPal\\' => 15,
         ),
+        'L' => 
+        array (
+            'League\\Csv\\' => 11,
+        ),
     );
 
     public static $prefixDirsPsr4 = array (
@@ -62,6 +66,10 @@ class ComposerStaticInit9efbec0181f850964033dcbe9773712f
         'Omnipay\\PayPal\\' => 
         array (
             0 => __DIR__ . '/..' . '/omnipay/paypal/src',
+        ),
+        'League\\Csv\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/league/csv/src',
         ),
     );
 

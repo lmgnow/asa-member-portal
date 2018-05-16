@@ -16,6 +16,8 @@
 // if this file is called directly, abort
 if ( ! defined( 'WPINC' ) ) die();
 use Omnipay\Omnipay;
+use League\Csv\Reader;
+use League\Csv\Writer;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
