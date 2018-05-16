@@ -312,6 +312,8 @@ class ASA_Member_Portal {
 
 		$output = '';
 
+		$output .= $this->export_users();
+
 		if ( ( $error = $cmb->prop( 'submission_error' ) ) && is_wp_error( $error ) ) {
 			$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>'. $error->get_error_message() .'</strong>' ) . '</div>';
 		}
@@ -1208,6 +1210,37 @@ class ASA_Member_Portal {
 		}
 
 		return ! empty( $bad_fields ) ? $bad_fields : false;
+	}
+
+	/**
+	 * Creates a csv string from an array.
+	 *
+	 * @return void
+	 */
+	private function export_users() {
+		$args = array(
+			'role__in'   => array_keys( $this->get_asamp_roles() ),
+			'meta_key'   => 'asamp_user_member_status',
+			'meta_value' => 'active',
+		);
+		$user_query = new WP_User_Query( $args );
+
+		return '<pre>' . print_r( $user_query->get_results(), true ) . '</pre>';
+
+		$header = array( 'first name', 'last name', 'email', );
+		$records = array(
+			array( 1, 2, 3, ),
+			array( 'foo', 'bar', 'baz', ),
+			array( 'john', 'doe', 'john.doe@example.com', ),
+		);
+
+		$csv = Writer::createFromString( '' );
+		$csv->insertOne( $header );
+		$csv->insertAll( $records );
+
+		$output = $csv->toHTML( 'table-csv-data with-header' );
+
+		return $output;
 	}
 
 	/**
