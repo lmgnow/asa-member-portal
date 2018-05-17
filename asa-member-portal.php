@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           1.1.1
+ * Version:           1.1.2
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -21,7 +21,7 @@ use League\Csv\Writer;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $version          = '1.1.1'; // str             Current version.
+	private $version          = '1.1.2'; // str             Current version.
 	private $plugin_file_path = '';      // str             Absolute path to this file.      (with trailing slash)
 	private $plugin_dir_path  = '';      // str             Absolute path to this directory. (with trailing slash)
 	private $plugin_dir_url   = '';      // str             URL of this directory.           (with trailing slash)
@@ -153,6 +153,8 @@ class ASA_Member_Portal {
 	 * @return array $links
 	 */
 	public function add_settings_link( $links ) {
+		$import_link = '<a href="users.php?page=asa_member_portal_import_members">' . __( 'Import Members', 'asamp' ) . '</a>';
+		array_unshift( $links, $import_link );
 		$settings_link = '<a href="options-general.php?page=asa_member_portal&tab=opt-tab-general">' . __( 'Settings', 'asamp' ) . '</a>';
 		array_unshift( $links, $settings_link );
 		return $links;
@@ -257,9 +259,11 @@ class ASA_Member_Portal {
 	 * Returns an associative array of the roles created by this plugin.
 	 * Includes slug, label, and price. To be used in a select field on the frontend.
 	 *
+	 * @param bool $with_price Optional. Default = true
+	 *
 	 * @return array $roles
 	 */
-	private function get_asamp_roles_select() {
+	private function get_asamp_roles_select( $with_price = false ) {
 		if ( ! empty( $this->options[ 'member_types' ] ) ) {
 			$member_types = $this->options[ 'member_types' ];
 		} else {
@@ -267,7 +271,7 @@ class ASA_Member_Portal {
 		}
 		$roles = array();
 		foreach ( $member_types as $member_type ) {
-			$str = sprintf( __( '(Dues: $%s/Year)', 'asamp' ), $member_type[ 'dues' ] );
+			$str = $with_price ? sprintf( __( '(Dues: $%s/Year)', 'asamp' ), $member_type[ 'dues' ] ) : '';
 			$roles[ 'asamp_' . sanitize_key( $member_type[ 'name' ] ) ] = $member_type[ 'name' ] . ' ' . $str;
 		}
 
@@ -1282,6 +1286,8 @@ class ASA_Member_Portal {
 	public function export_members() {
 		if ( empty( $_POST[ 'asamp_export_members' ] ) || ! current_user_can( 'manage_options' ) ) return;
 
+		$roles = $this->get_asamp_roles_select();
+
 		$prefix = 'asamp_user_';
 		$keepers = array(
 			$prefix . 'login'                       => '',
@@ -1355,9 +1361,11 @@ class ASA_Member_Portal {
 				$keepers[ $prefix . 'company_business_type' . '_' . $i ] = '';
 			}
 		}
-		
+
 		foreach ( $users as $key => $value ) {
 			$user = $this->flatten_array( get_user_meta( $value->ID ) );
+
+			$user[ 'member_type' ] = $roles[ $user[ 'member_type' ] ];
 			
 			if ( ! empty( $user[ $prefix . 'company_contacts' ] ) ) {
 				$contacts = unserialize( $user[ $prefix . 'company_contacts' ] );
@@ -1408,13 +1416,57 @@ class ASA_Member_Portal {
 	public function import_members() {
 		$file = get_option( 'asa_member_portal_import_members' );
 		if ( empty( $file[ 'upload_file_id' ] ) ) return;
-
+		
+		$prefix  = 'asamp_user_';
+		$roles   = $this->get_asamp_roles_select();
 		$csv     = Reader::createFromPath( get_attached_file( $file[ 'upload_file_id' ] ), 'r' );
 		$headers = $csv->fetchOne();
-		$res     = $csv->setOffset(1)->fetchAll();
+		$members = $csv->setOffset( 1 )->fetchAssoc( $headers );
 
-		$this->write_log( $headers, 'hhhhdr' );
-		$this->write_log( $res, 'hhhhdr' );
+		foreach ( $members as $member ) {
+			$userdata = array(
+				'user_login'           => $member[ 'login' ],
+				'user_pass'            => ! empty( $member[ 'pass' ] ) ? $member[ 'pass' ] : wp_generate_password( rand( 12, 18 ) ),
+				'user_nicename'        => sanitize_html_class( $member[ 'company_name' ] ),
+				'user_url'             => strtolower( $member[ 'company_website' ] ),
+				'user_email'           => str_replace( array( '.com', '.net', '.org', '.edu', '.us', ), array( '.coz', '.nex', '.orz', '.edz', '.uz', ), strtolower( $member[ 'company_email' ] ) ),
+				'display_name'         => $member[ 'company_name' ],
+				'description'          => $member[ 'company_description' ],
+				'rich_editing'         => false,
+				'syntax_highlighting'  => false,
+				'show_admin_bar_front' => false,
+			);
+
+			$user_id = wp_insert_user( $userdata );
+
+			$role = array_search( trim( $member[ 'member_type' ] ) . ' ', $roles );
+			$u = new WP_User( $user_id );
+			$u->add_role( $role );
+			$u->remove_role( 'subscriber' );
+
+			/*$this->write_log( $roles, 'roles' );
+			$this->write_log( $role, 'role' );
+			$this->write_log( $member[ 'member_type' ], 'type' );
+			$this->write_log( $u, 'user' );*/
+
+			update_user_meta( $user_id, 'first_name',                      $member[ 'company_name' ] );
+			update_user_meta( $user_id, 'nickname',                        $member[ 'company_name' ] );
+			update_user_meta( $user_id, $prefix . 'member_date_joined',    $member[ 'member_date_joined' ] );
+			update_user_meta( $user_id, $prefix . 'member_expiry',         $member[ 'member_expiry' ] );
+			update_user_meta( $user_id, $prefix . 'member_status',         $member[ 'member_status' ] );
+			update_user_meta( $user_id, $prefix . 'company_name',          $member[ 'company_name' ] );
+			update_user_meta( $user_id, $prefix . 'member_type',           $role );
+			update_user_meta( $user_id, $prefix . 'company_year_founded',  $member[ 'company_year_founded' ] );
+			update_user_meta( $user_id, $prefix . 'company_num_employees', $member[ 'company_num_employees' ] );
+			update_user_meta( $user_id, $prefix . 'company_website',       strtolower( $member[ 'company_website' ] ) );
+			update_user_meta( $user_id, $prefix . 'company_email',         str_replace( array( '.com', '.net', '.org', '.edu', '.us', ), array( '.coz', '.nex', '.orz', '.edz', '.uz', ), strtolower( $member[ 'company_email' ] ) ) );
+			update_user_meta( $user_id, $prefix . 'company_phone',         $member[ 'company_phone' ] );
+			update_user_meta( $user_id, $prefix . 'company_fax',           $member[ 'company_fax' ] );
+			update_user_meta( $user_id, $prefix . 'company_street',        $member[ 'company_street' ] );
+			update_user_meta( $user_id, $prefix . 'company_city',          $member[ 'company_city' ] );
+			update_user_meta( $user_id, $prefix . 'company_state',         $member[ 'company_state' ] );
+			update_user_meta( $user_id, $prefix . 'company_zip',           $member[ 'company_zip' ] );
+		}
 	}
 
 	/**
@@ -1674,7 +1726,7 @@ class ASA_Member_Portal {
 			'id'         => $prefix . 'member_type',
 			'type'       => 'select',
 			'default'    => $this->get_member_role(),
-			'options'    => $this->get_asamp_roles_select(),
+			'options'    => $this->get_asamp_roles_select( true ),
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'Credit Card Info', 'asamp' ),
@@ -2422,7 +2474,7 @@ class ASA_Member_Portal {
 					'name'            => ! empty( $this->options[ 'member_type_label' ] ) ? $this->options[ 'member_type_label' ] : $this->get_default_member_type_label(),
 					'id'              => $prefix . 'member_type',
 					'type'            => 'select',
-					'options'         => $this->get_asamp_roles_select(),
+					'options'         => $this->get_asamp_roles_select( true ),
 				) );
 
 				$cmb_user->add_field( array(
