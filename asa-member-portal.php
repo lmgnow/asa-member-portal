@@ -312,7 +312,7 @@ class ASA_Member_Portal {
 
 		$output = '';
 
-		$output .= $this->export_users();
+		//$output .= $this->export_users();
 
 		if ( ( $error = $cmb->prop( 'submission_error' ) ) && is_wp_error( $error ) ) {
 			$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>'. $error->get_error_message() .'</strong>' ) . '</div>';
@@ -1271,13 +1271,13 @@ class ASA_Member_Portal {
 		}
 		//return '<pre>' . print_r( $serialized, true ) . '</pre>';
 
-		foreach ( $serialized as $k => $v ) {
+		/*foreach ( $serialized as $k => $v ) {
 			if ( $v > 0 ) {
 				for ( $i = 0; $i < $v; $i++ ) {
 					$keepers[ $k . '_' . $n ] = ;
 				}
 			}
-		}
+		}*/
 		
 		foreach ( $users as $k => $v ) {
 			$user = $this->flatten_array( get_user_meta( $v->ID ) );
