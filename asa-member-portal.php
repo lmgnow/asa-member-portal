@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           1.0.9
+ * Version:           1.1.1
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -21,7 +21,7 @@ use League\Csv\Writer;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $version          = '1.0.9'; // str             Current version.
+	private $version          = '1.1.1'; // str             Current version.
 	private $plugin_file_path = '';      // str             Absolute path to this file.      (with trailing slash)
 	private $plugin_dir_path  = '';      // str             Absolute path to this directory. (with trailing slash)
 	private $plugin_dir_url   = '';      // str             URL of this directory.           (with trailing slash)
@@ -61,6 +61,8 @@ class ASA_Member_Portal {
 		add_action( 'update_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
 		add_action( 'delete_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
 
+		add_action( 'update_option_asa_member_portal_import_members', array( $this, 'import_members' ), 10, 2 );
+
 		add_action( 'user_register',  array( $this, 'set_user_options' ), 10, 1 );
 		add_action( 'profile_update', array( $this, 'set_user_options' ), 10, 1 );
 
@@ -80,6 +82,9 @@ class ASA_Member_Portal {
 		add_action( 'init', array( $this, 'register_shortcodes'       ) );
 
 		add_action( 'admin_init', array( $this, 'get_this_plugin_data' ) );
+		add_action( 'admin_init', array( $this, 'export_members'       ) );
+
+		add_action( 'admin_footer', array( $this, 'add_export_members_link' ) );
 
 		add_filter( 'plugin_action_links_' . plugin_basename( $this->plugin_file_path ), array( $this, 'add_settings_link' ), 10, 1 );
 	}
@@ -131,7 +136,7 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function admin_enqueue( $hook ) {
-		$hooks = array( 'settings_page_asa_member_portal', 'user-new.php', 'profile.php' );
+		$hooks = array( 'settings_page_asa_member_portal', 'users_page_asa_member_portal_import_members', 'user-new.php', 'profile.php' );
 		foreach ( $hooks as $v ) {
 			if ( $v === $hook ) {
 				wp_enqueue_style(  'asamp_admin_style',  $this->plugin_dir_url . 'css/asamp-admin-style.css', array(          ), $this->version, 'screen' );
@@ -311,8 +316,6 @@ class ASA_Member_Portal {
 		$cmb = cmb2_get_metabox( $form_id, $this->user()->ID );
 
 		$output = '';
-
-		$output .= $this->export_users();
 
 		if ( ( $error = $cmb->prop( 'submission_error' ) ) && is_wp_error( $error ) ) {
 			$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>'. $error->get_error_message() .'</strong>' ) . '</div>';
@@ -1252,11 +1255,33 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Adds a link to the users table footer.
+	 *
+	 * @return void
+	 */
+	public function add_export_members_link() {
+		$screen = get_current_screen();
+		if ( 'users' !== $screen->id || ! current_user_can( 'manage_options' ) ) return;
+		?>
+			<script>
+				(function($){
+					'use strict';
+					$(document).ready(function(){
+						$('.tablenav.bottom .clear').before('<form method="post" style="float: right; margin-right: 1em;"><input type="hidden" id="asamp_export_members" name="asamp_export_members" value="1" /><input class="button button-primary asamp-export-members-button" style="margin-top:3px;" type="submit" value="<?php _e( 'Export All ASA Members', 'asamp' ); ?>" /></form>');
+					});
+				})(jQuery);
+			</script>
+		<?php
+	}
+
+	/**
 	 * Creates a csv string from an array.
 	 *
 	 * @return void
 	 */
-	private function export_users() {
+	public function export_members() {
+		if ( empty( $_POST[ 'asamp_export_members' ] ) || ! current_user_can( 'manage_options' ) ) return;
+
 		$prefix = 'asamp_user_';
 		$keepers = array(
 			$prefix . 'login'                       => '',
@@ -1301,11 +1326,7 @@ class ASA_Member_Portal {
 			'role__in' => array_keys( $this->get_asamp_roles() ),
 		);
 		$user_query = new WP_User_Query( $args );
-
 		$users = $user_query->get_results();
-		$num_company_contacts     = 0;
-		$num_business_types       = 0;
-		$num_business_types_other = 0;
 
 		foreach ( $users as $key => $value ) {
 			$user = get_user_meta( $value->ID );
@@ -1317,41 +1338,83 @@ class ASA_Member_Portal {
 				}
 			}
 		}
-		//return '<pre>' . print_r( $serialized, true ) . '</pre>';
 
-		unset( $serialized[ $prefix . 'company_contacts' ] );
-		$serialized[ $prefix . 'company_business_type' ] = $serialized[ $prefix . 'company_business_type' ] + $serialized[ $prefix . 'company_business_type_other' ];
-		unset( $serialized[ $prefix . 'company_business_type_other' ] );
-		foreach ( $serialized as $k => $v ) {
-			if ( $v > 0 ) {
-				for ( $i = 1; $i < $v + 1; $i++ ) {
-					$keepers[ $k . '_' . $i ] = '';
+		foreach ( $serialized_groups as $k => $v ) {
+			if ( $serialized[ $k ] > 0 ) {
+				for ( $i = 1; $i < $serialized[ $k ] + 1; $i++ ) {
+					foreach ( $v as $f ) {
+						$keepers[ $k . '_' . $i . '_' . $f ] = '';
+					}
 				}
 			}
 		}
 
-		foreach ( $serialized_groups as $k => $v ) {
-			/*if ( $v > 0 ) {
-				for ( $i = 1; $i < $v + 1; $i++ ) {
-					$keepers[ $k . '_' . $i ] = '';
-				}
-			}*/
+		$serialized[ $prefix . 'company_business_type' ] = $serialized[ $prefix . 'company_business_type' ] + $serialized[ $prefix . 'company_business_type_other' ];
+		if ( $serialized[ $prefix . 'company_business_type' ] > 0 ) {
+			for ( $i = 1; $i < $serialized[ $prefix . 'company_business_type' ] + 1; $i++ ) {
+				$keepers[ $prefix . 'company_business_type' . '_' . $i ] = '';
+			}
 		}
 		
-		foreach ( $users as $k => $v ) {
-			$user = $this->flatten_array( get_user_meta( $v->ID ) );
+		foreach ( $users as $key => $value ) {
+			$user = $this->flatten_array( get_user_meta( $value->ID ) );
+			
+			if ( ! empty( $user[ $prefix . 'company_contacts' ] ) ) {
+				$contacts = unserialize( $user[ $prefix . 'company_contacts' ] );
+				foreach ( $contacts as $i => $contact ) {
+					foreach ( $contact as $k => $v ) {
+						$user[ $prefix . 'company_contacts_' . ( $i + 1 ) . '_' . $k ] = $v;
+					}
+				}
+			}
+			
+			if ( ! empty( $user[ $prefix . 'company_business_type' ] ) || ! empty( $user[ $prefix . 'company_business_type_other' ] ) ) {
+				$types       = unserialize( $user[ $prefix . 'company_business_type'       ] );
+				$other_types = unserialize( $user[ $prefix . 'company_business_type_other' ] );
+				$n = 0;
+				foreach ( $types as $i => $type ) {
+					$n++;
+					$user[ $prefix . 'company_business_type_' . $n ] = $type;
+				}
+				foreach ( $other_types as $i => $type ) {
+					$n++;
+					$user[ $prefix . 'company_business_type_' . $n ] = $type;
+				}
+			}
+
 			$user = array_intersect_key( $user, $keepers );
 			$user = array_replace( $keepers, $user );
-			$users[ $k ] = $user;
+			$users[ $key ] = $user;
+		}
+
+		unset( $keepers[ $prefix . 'company_contacts' ], $keepers[ $prefix . 'company_business_type' ], $keepers[ $prefix . 'company_business_type_other' ] );
+		foreach ( $users as $i => $user ) {
+			unset( $user[ $prefix . 'company_contacts' ], $user[ $prefix . 'company_business_type' ], $user[ $prefix . 'company_business_type_other' ] );
+			$users[ $i ] = $user;
 		}
 
 		$csv = Writer::createFromString( '' );
-		$csv->insertOne( str_replace( array( $prefix, '_other' ), '', array_keys( $keepers ) ) );
+		$csv->insertOne( str_replace( $prefix, '', array_keys( $keepers ) ) );
 		$csv->insertAll( $users );
+		$csv->output( sanitize_key( get_bloginfo( 'name' ) ) . '_members_' . date( 'Y-m-d' ) . '.csv' );
+		exit();
+	}
 
-		$output = $csv->toHTML( 'table' );
+	/**
+	 * Creates/updates member accounts from a .csv file.
+	 *
+	 * @return void
+	 */
+	public function import_members() {
+		$file = get_option( 'asa_member_portal_import_members' );
+		if ( empty( $file[ 'upload_file_id' ] ) ) return;
 
-		return $output;
+		$csv     = Reader::createFromPath( get_attached_file( $file[ 'upload_file_id' ] ), 'r' );
+		$headers = $csv->fetchOne();
+		$res     = $csv->setOffset(1)->fetchAll();
+
+		$this->write_log( $headers, 'hhhhdr' );
+		$this->write_log( $res, 'hhhhdr' );
 	}
 
 	/**
@@ -1398,7 +1461,6 @@ class ASA_Member_Portal {
 	 */
 	public function options_init() {
 		$options_key = 'asa_member_portal';
-
 		new Cmb2_Metatabs_Options( array(
 			'key'      => $options_key,
 			'title'    => __( 'ASA Member Portal Settings', 'asamp' ),
@@ -1408,6 +1470,20 @@ class ASA_Member_Portal {
 			'tabs'     => $this->options_add_tabs(),
 			'menuargs' => array(
 				'menu_title'      => __( 'ASA Membership', 'asamp' ),
+				'capability'      => 'manage_options',
+				'view_capability' => 'manage_options',
+			),
+		) );
+
+		$import_members_key = 'asa_member_portal_import_members';
+		new Cmb2_Metatabs_Options( array(
+			'key'      => $import_members_key,
+			'title'    => __( 'Import ASA Members', 'asamp' ),
+			'topmenu'  => 'users.php',
+			'resettxt' => '',
+			'boxes'    => $this->import_members_add_boxes( $import_members_key ),
+			'menuargs' => array(
+				'menu_title'      => __( 'Import ASA Members', 'asamp' ),
 				'capability'      => 'manage_options',
 				'view_capability' => 'manage_options',
 			),
@@ -2020,6 +2096,55 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Adds boxes to plugin options.
+	 *
+	 * This is typical CMB2, but note two crucial extra items:
+	 * - the ['show_on'] property is configured
+	 * - a call to object_type method
+	 *
+	 * @param  string $member_import_key
+	 *
+	 * @return array $boxes
+	 */
+	private function import_members_add_boxes( $member_import_key ) {
+		//holds all CMB2 box objects
+		$boxes = array();
+		
+		//add this to all boxes
+		$show_on = array(
+			'key'   => 'options-page',
+			'value' => array( $member_import_key ),
+		);
+		
+		$cmb = new_cmb2_box( array(
+			'id'              => 'member_import',
+			'title'           => __( 'Import Members', 'asamp' ),
+			'show_on'         => $show_on,
+			'display_cb'      => false,
+			'admin_menu_hook' => false,
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'Upload File', 'asamp' ),
+			'desc'            => __( 'File must be formatted correctly or you will badly break your website. See an <a href="' . $this->plugin_dir_url . 'includes/members_example.csv" target="_blank">example</a>.', 'asamp' ),
+			'id'              => 'upload_file',
+			'type'            => 'file',
+			'options' => array(
+				//'url' => false,
+			),
+			'text' => array(
+				'add_upload_file_text' => 'Choose File',
+			),
+			'query_args' => array(
+				'type' => 'text/csv',
+			),
+		) );
+		$cmb->object_type( 'options-page' );
+		$boxes[] = $cmb;
+		
+		return $boxes;
+	}
+
+	/**
 	 * Adds member profile fields to user meta.
 	 *
 	 * @return void
@@ -2366,23 +2491,6 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * Writes to error_log.
-	 *
-	 * @param mixed  $log
-	 * @param string $id
-	 *
-	 * @return void
-	 */
-	public function write_log( $log, $id = '' ) {
-		error_log( '************* ' . $id . ' *************' );
-		if ( is_array( $log ) || is_object( $log ) ) {
-			error_log( print_r( $log, true ) );
-		} else {
-			error_log( $log );
-		}
-	}
-
-	/**
 	 * Prints output.
 	 * For use on field of type: 'title'.
 	 *
@@ -2426,6 +2534,23 @@ class ASA_Member_Portal {
 				</dl>
 			</div>
 		<?php
+	}
+
+	/**
+	 * Writes to error_log.
+	 *
+	 * @param mixed  $log
+	 * @param string $id
+	 *
+	 * @return void
+	 */
+	public function write_log( $log, $id = '' ) {
+		error_log( '************* ' . $id . ' *************' );
+		if ( is_array( $log ) || is_object( $log ) ) {
+			error_log( print_r( $log, true ) );
+		} else {
+			error_log( $log );
+		}
 	}
 
 }
