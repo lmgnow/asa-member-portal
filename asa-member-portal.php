@@ -1069,6 +1069,8 @@ class ASA_Member_Portal {
 			update_user_meta( $user_id, 'first_name',                   $sanitized_values[ $prefix . 'company_name' ] );
 			update_user_meta( $user_id, 'nickname',                     $sanitized_values[ $prefix . 'company_name' ] );
 			update_user_meta( $user_id, $prefix . 'member_date_joined', date( 'Y-m-d' ) );
+			update_user_meta( $user_id, $prefix . 'member_expiry',      date( 'Y-m-d' ) );
+			update_user_meta( $user_id, $prefix . 'member_status',     'inactive' );
 
 			wp_signon( array(
 				'user_login'    => $userdata[ 'user_login' ],
@@ -1218,27 +1220,77 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	private function export_users() {
+		$prefix = 'asamp_user_';
+		$keepers = array(
+			$prefix . 'login'                       => '',
+			$prefix . 'member_status'               => '',
+			$prefix . 'member_type'                 => '',
+			$prefix . 'member_date_joined'          => '',
+			$prefix . 'member_expiry'               => '',
+			$prefix . 'company_name'                => '',
+			$prefix . 'company_description'         => '',
+			$prefix . 'company_website'             => '',
+			$prefix . 'company_phone'               => '',
+			$prefix . 'company_fax'                 => '',
+			$prefix . 'company_email'               => '',
+			$prefix . 'company_street'              => '',
+			$prefix . 'company_city'                => '',
+			$prefix . 'company_state'               => '',
+			$prefix . 'company_zip'                 => '',
+			$prefix . 'company_year_founded'        => '',
+			$prefix . 'company_num_employees'       => '',
+			$prefix . 'company_contacts'            => '',
+			$prefix . 'company_business_type'       => '',
+			$prefix . 'company_business_type_other' => '',
+		);
+		$serialized = array(
+			$prefix . 'company_contacts'            => 0,
+			$prefix . 'company_business_type'       => 0,
+			$prefix . 'company_business_type_other' => 0,
+		);
+
 		$args = array(
-			'role__in'   => array_keys( $this->get_asamp_roles() ),
-			'meta_key'   => 'asamp_user_member_status',
-			'meta_value' => 'active',
+			'role__in' => array_keys( $this->get_asamp_roles() ),
 		);
 		$user_query = new WP_User_Query( $args );
 
-		return '<pre>' . print_r( $user_query->get_results(), true ) . '</pre>';
+		$users = $user_query->get_results();
+		$num_company_contacts     = 0;
+		$num_business_types       = 0;
+		$num_business_types_other = 0;
 
-		$header = array( 'first name', 'last name', 'email', );
-		$records = array(
-			array( 1, 2, 3, ),
-			array( 'foo', 'bar', 'baz', ),
-			array( 'john', 'doe', 'john.doe@example.com', ),
-		);
+		foreach ( $users as $key => $value ) {
+			$user = get_user_meta( $value->ID );
+			foreach ( $serialized as $k => $v ) {
+				if ( ! empty( $user[ $k ] ) ) {
+					$c = ltrim( $user[ $k ][ 0 ], 'a:' );
+					$c = strstr( $c, ':', true );
+					$serialized[ $k ] = $c > $serialized[ $k ] ? $c : $serialized[ $k ];
+				}
+			}
+		}
+		//return '<pre>' . print_r( $serialized, true ) . '</pre>';
+
+		foreach ( $serialized as $k => $v ) {
+			if ( $v > 0 ) {
+				for ( $i = 0; $i < $v; $i++ ) {
+					$keepers[ $k . '_' . $n ] = ;
+				}
+			}
+		}
+		
+		foreach ( $users as $k => $v ) {
+			$user = $this->flatten_array( get_user_meta( $v->ID ) );
+			$user = array_intersect_key( $user, $keepers );
+			$user = array_replace( $keepers, $user );
+			$users[ $k ] = $user;
+		}
 
 		$csv = Writer::createFromString( '' );
-		$csv->insertOne( $header );
-		$csv->insertAll( $records );
+		$csv->insertOne( str_replace( array( $prefix, '_other' ), '', array_keys( $keepers ) ) );
+		$csv->insertAll( $users );
 
-		$output = $csv->toHTML( 'table-csv-data with-header' );
+		$output = $csv->toHTML( 'table' );
 
 		return $output;
 	}
