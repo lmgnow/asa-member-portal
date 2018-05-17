@@ -1248,6 +1248,17 @@ class ASA_Member_Portal {
 			$prefix . 'company_business_type'       => 0,
 			$prefix . 'company_business_type_other' => 0,
 		);
+		$serialized_groups = array(
+			$prefix . 'company_contacts' => array(
+				'name_first',
+				'name_last',
+				'phone',
+				'fax',
+				'email',
+				'title',
+				'asa_position',
+			),
+		);
 
 		$args = array(
 			'role__in' => array_keys( $this->get_asamp_roles() ),
@@ -1271,13 +1282,24 @@ class ASA_Member_Portal {
 		}
 		//return '<pre>' . print_r( $serialized, true ) . '</pre>';
 
-		/*foreach ( $serialized as $k => $v ) {
+		unset( $serialized[ $prefix . 'company_contacts' ] );
+		$serialized[ $prefix . 'company_business_type' ] = $serialized[ $prefix . 'company_business_type' ] + $serialized[ $prefix . 'company_business_type_other' ];
+		unset( $serialized[ $prefix . 'company_business_type_other' ] );
+		foreach ( $serialized as $k => $v ) {
 			if ( $v > 0 ) {
-				for ( $i = 0; $i < $v; $i++ ) {
-					$keepers[ $k . '_' . $n ] = ;
+				for ( $i = 1; $i < $v + 1; $i++ ) {
+					$keepers[ $k . '_' . $i ] = '';
 				}
 			}
-		}*/
+		}
+
+		foreach ( $serialized_groups as $k => $v ) {
+			/*if ( $v > 0 ) {
+				for ( $i = 1; $i < $v + 1; $i++ ) {
+					$keepers[ $k . '_' . $i ] = '';
+				}
+			}*/
+		}
 		
 		foreach ( $users as $k => $v ) {
 			$user = $this->flatten_array( get_user_meta( $v->ID ) );
