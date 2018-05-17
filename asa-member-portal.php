@@ -312,7 +312,7 @@ class ASA_Member_Portal {
 
 		$output = '';
 
-		//$output .= $this->export_users();
+		$output .= $this->export_users();
 
 		if ( ( $error = $cmb->prop( 'submission_error' ) ) && is_wp_error( $error ) ) {
 			$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>'. $error->get_error_message() .'</strong>' ) . '</div>';
@@ -348,6 +348,22 @@ class ASA_Member_Portal {
 			<?php
 			$output .= ob_get_clean();
 		}
+
+		/*if ( ! $this->is_member() ) {
+			ob_start();
+			// TODO: enqueue this script properly.
+			?>
+				<script src="https://www.google.com/recaptcha/api.js?render=<?php echo $this->options[ 'google_recaptcha_site_key' ]; ?>"></script>
+				<script>
+					grecaptcha.ready(function(){
+						grecaptcha.execute('<?php echo $this->options[ 'google_recaptcha_site_key' ]; ?>', {action: 'asamp_user_edit'}).then(function(token){
+							
+						});
+					});
+				</script>
+			<?php
+			$output .= ob_get_clean();
+		}*/
 
 		return $output;
 	}
@@ -1034,6 +1050,27 @@ class ASA_Member_Portal {
 			$cmb->prop( 'validation_errors', $validation_errors );
 			return $cmb;
 		}
+
+		/*$post_data = http_build_query(
+			array(
+				'secret'   => $this->options[ 'google_recaptcha_secret_key' ],
+				'response' => $_POST[ 'g-recaptcha-response' ],
+				'remoteip' => $_SERVER[ 'REMOTE_ADDR' ],
+			)
+		);
+		$opts = array(
+			'http' => array(
+				'method'  => 'POST',
+				'header'  => 'Content-type: application/x-www-form-urlencoded',
+				'content' => $post_data,
+			),
+		);
+		$context  = stream_context_create( $opts );
+		$response = file_get_contents( 'https://www.google.com/recaptcha/api/siteverify', false, $context );
+		$result   = json_decode( $response );
+		if ( ! $result->success ) {
+			return $cmb->prop( 'submission_error', new WP_Error( 'recaptcha_fail', __( 'You are a robot.', 'asamp' ) ) );
+		}*/
 
 		$dest = add_query_arg( 'member_updated', 'true' );
 
@@ -1739,19 +1776,19 @@ class ASA_Member_Portal {
 				'no'  => __( 'No',  'asamp' ),
 			),
 		) );
-		$has_recaptcha = get_option( 'gglcptch_options' );
-		if ( empty( $has_recaptcha[ 'public_key' ] ) && empty( $has_recaptcha[ 'private_key' ] ) ) {
+		//$has_recaptcha = get_option( 'gglcptch_options' );
+		//if ( empty( $has_recaptcha[ 'public_key' ] ) && empty( $has_recaptcha[ 'private_key' ] ) ) {
 			$cmb->add_field( array(
-				'name'            => __( 'Google reCaptcha Site Key', 'asamp' ),
+				'name'            => __( 'Google "reCAPTCHA v3" Site Key', 'asamp' ),
 				'id'              => 'google_recaptcha_site_key',
 				'type'            => 'text',
 			) );
 			$cmb->add_field( array(
-				'name'            => __( 'Google reCaptcha Secret Key', 'asamp' ),
+				'name'            => __( 'Google "reCAPTCHA v3" Secret Key', 'asamp' ),
 				'id'              => 'google_recaptcha_secret_key',
 				'type'            => 'text',
 			) );
-		}
+		//}
 		$cmb->add_field( array(
 			'name'            => __( 'Member Type Label', 'asamp' ),
 			'id'              => 'member_type_label',
