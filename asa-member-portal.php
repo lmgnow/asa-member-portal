@@ -1422,14 +1422,26 @@ class ASA_Member_Portal {
 		$csv     = Reader::createFromPath( get_attached_file( $file[ 'upload_file_id' ] ), 'r' );
 		$headers = $csv->fetchOne();
 		$members = $csv->setOffset( 1 )->fetchAssoc( $headers );
+		//$users   = array();
 
-		foreach ( $members as $member ) {
+		/*foreach ( $members as $member ) {
+			$users[] => array(
+				'login' => get_user_by( 'login', $member[ 'login' ] ),
+				'email' => get_user_by( 'email', $member[ 'company_email' ] ),
+			),
+		}*/
+
+		foreach ( $members as $key => $member ) {
+			/*if ( false !== $users[ $key ][ 'login' ] || false !== $users[ $key ][ 'email' ] ) {
+
+			}*/
+
 			$userdata = array(
 				'user_login'           => $member[ 'login' ],
 				'user_pass'            => ! empty( $member[ 'pass' ] ) ? $member[ 'pass' ] : wp_generate_password( rand( 12, 18 ) ),
 				'user_nicename'        => sanitize_html_class( $member[ 'company_name' ] ),
 				'user_url'             => strtolower( $member[ 'company_website' ] ),
-				'user_email'           => str_replace( array( '.com', '.net', '.org', '.edu', '.us', ), array( '.coz', '.nex', '.orz', '.edz', '.uz', ), strtolower( $member[ 'company_email' ] ) ),
+				'user_email'           => strtolower( $member[ 'company_email' ] ),
 				'display_name'         => $member[ 'company_name' ],
 				'description'          => $member[ 'company_description' ],
 				'rich_editing'         => false,
@@ -1459,7 +1471,7 @@ class ASA_Member_Portal {
 			update_user_meta( $user_id, $prefix . 'company_year_founded',  $member[ 'company_year_founded' ] );
 			update_user_meta( $user_id, $prefix . 'company_num_employees', $member[ 'company_num_employees' ] );
 			update_user_meta( $user_id, $prefix . 'company_website',       strtolower( $member[ 'company_website' ] ) );
-			update_user_meta( $user_id, $prefix . 'company_email',         str_replace( array( '.com', '.net', '.org', '.edu', '.us', ), array( '.coz', '.nex', '.orz', '.edz', '.uz', ), strtolower( $member[ 'company_email' ] ) ) );
+			update_user_meta( $user_id, $prefix . 'company_email',         strtolower( $member[ 'company_email' ] ) );
 			update_user_meta( $user_id, $prefix . 'company_phone',         $member[ 'company_phone' ] );
 			update_user_meta( $user_id, $prefix . 'company_fax',           $member[ 'company_fax' ] );
 			update_user_meta( $user_id, $prefix . 'company_street',        $member[ 'company_street' ] );
