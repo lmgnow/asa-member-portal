@@ -31,6 +31,7 @@ class ASA_Member_Portal {
 	private $user_meta        = null;    // stdClass object Current logged in user's user_meta data.
 	private $is_member        = false;   // bool            true if $this->user is a member.
 	private $fieldset_open    = false;   // bool            true if fieldset is already open.
+	private $notices          = null;    // object          Used to store notices.
 
 	/**
 	 * Constructs object.
@@ -41,6 +42,7 @@ class ASA_Member_Portal {
 		$this->plugin_file_path = __FILE__;
 		$this->plugin_dir_path  = plugin_dir_path( $this->plugin_file_path );
 		$this->plugin_dir_url   = plugin_dir_url(  $this->plugin_file_path );
+		$this->notices          = new ASAMP_One_Time_Notices();
 
 		require_once $this->plugin_dir_path . 'includes/vendor/autoload.php';
 		require_once $this->plugin_dir_path . 'includes/vendor/webdevstudios/cmb2/init.php';
@@ -61,8 +63,6 @@ class ASA_Member_Portal {
 		add_action( 'update_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
 		add_action( 'delete_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
 
-		add_action( 'update_option_asa_member_portal_import_members', array( $this, 'import_members' ), 10, 2 );
-
 		add_action( 'user_register',  array( $this, 'set_user_options' ), 10, 1 );
 		add_action( 'profile_update', array( $this, 'set_user_options' ), 10, 1 );
 
@@ -73,14 +73,14 @@ class ASA_Member_Portal {
 		add_action( 'cmb2_init',       array( $this, 'login_form_init'       ) );
 		add_action( 'cmb2_init',       array( $this, 'dues_payments_init'    ) );
 		add_action( 'cmb2_admin_init', array( $this, 'options_init'          ) );
+		add_action( 'cmb2_admin_init', array( $this, 'import_members'        ) );
 		add_action( 'cmb2_after_init', array( $this, 'frontend_user_profile' ) );
 		add_action( 'cmb2_after_init', array( $this, 'frontend_user_login'   ) );
 		add_action( 'cmb2_after_init', array( $this, 'frontend_dues_payment' ) );
 
-		add_action( 'init', array( $this, 'disallow_dashboard_access' ) );
-		add_action( 'init', array( $this, 'register_post_types'       ) );
-		add_action( 'init', array( $this, 'register_shortcodes'       ) );
-
+		add_action( 'init',       array( $this, 'disallow_dashboard_access' ) );
+		add_action( 'init',       array( $this, 'register_post_types'       ) );
+		add_action( 'init',       array( $this, 'register_shortcodes'       ) );
 		add_action( 'admin_init', array( $this, 'get_this_plugin_data' ) );
 		add_action( 'admin_init', array( $this, 'export_members'       ) );
 
@@ -222,6 +222,7 @@ class ASA_Member_Portal {
 			$member_types = array( array( 'name' => $this->get_default_member_type_name() ) );
 		}
 		foreach ( $member_types as $member_type ) {
+			$member_type[ 'name' ] = trim( $member_type[ 'name' ] );
 			$role = 'asamp_' . sanitize_key( $member_type[ 'name' ] );
 			$result = add_role( $role, $member_type[ 'name' ], array( 'read' ) );
 		}
@@ -1409,75 +1410,142 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Inserts a new user or updates an existing one.
+	 *
+	 * @param array $userdata
+	 * @param int   $try
+	 *
+	 * @return int $user_id
+	 */
+	public function insert_update_member( $member, $userdata, $try = 1 ) {
+		$user = get_user_by( 'login', $userdata[ 'user_login' ] );
+
+		if ( ! $user ) {
+			$userdata[ 'user_pass' ] = ! empty( $member[ 'pass' ] ) ? $member[ 'pass' ] : wp_generate_password( rand( 12, 15 ) );
+			$user_id = wp_insert_user( $userdata );
+		} else {
+			$userdata[ 'ID' ] = $user->ID;
+			if ( ! empty( $member[ 'pass' ] ) ) $userdata[ 'user_pass' ] = wp_hash_password( $member[ 'pass' ] );
+			$user_id = wp_insert_user( $userdata );
+		}
+
+		if ( is_wp_error( $user_id ) ) {
+			$message = $user_id->get_error_message();
+			$this->notices->add_error( sprintf( __( 'Error on row with login: "%s". %s Importing aborted. This row and subsequent rows were not processed.', 'asamp' ), $member[ 'login' ], '<strong>' . $message . '</strong>' ) );
+			wp_redirect( esc_url_raw( add_query_arg( 'members_import_successful', 'partial' ) ) );
+			exit();
+		}
+		
+		return $user_id;
+	}
+
+	/**
 	 * Creates/updates member accounts from a .csv file.
 	 *
 	 * @return void
 	 */
 	public function import_members() {
-		$file = get_option( 'asa_member_portal_import_members' );
-		if ( empty( $file[ 'upload_file_id' ] ) ) return;
+		if ( 'asa_member_portal_import_members' !== $_POST[ 'object_id' ] || empty( $_POST[ 'upload_file_id' ] ) ) return;
 		
 		$prefix  = 'asamp_user_';
 		$roles   = $this->get_asamp_roles_select();
-		$csv     = Reader::createFromPath( get_attached_file( $file[ 'upload_file_id' ] ), 'r' );
+		$csv     = Reader::createFromPath( get_attached_file( $_POST[ 'upload_file_id' ] ), 'r' );
 		$headers = $csv->fetchOne();
 		$members = $csv->setOffset( 1 )->fetchAssoc( $headers );
-		//$users   = array();
 
-		/*foreach ( $members as $member ) {
-			$users[] => array(
-				'login' => get_user_by( 'login', $member[ 'login' ] ),
-				'email' => get_user_by( 'email', $member[ 'company_email' ] ),
-			),
-		}*/
+		wp_delete_attachment( $_POST[ 'upload_file_id' ] );
 
-		foreach ( $members as $key => $member ) {
-			/*if ( false !== $users[ $key ][ 'login' ] || false !== $users[ $key ][ 'email' ] ) {
+		$required = array(
+			'login',
+			'company_name',
+			'company_email',
+			'member_status',
+			'member_type',
+			'member_date_joined',
+			'member_expiry',
+		);
+		foreach ( $members as $member ) {
+			foreach ( $required as $field ) {
+				if ( empty( $member[ $field ] ) ) {
+					$missing[ $field ] = true;
+				}
+			}
 
-			}*/
+			if ( ! array_search( $member[ 'member_type' ] . ' ', $roles ) ) {
+				$invalid_member_types[] = $member[ 'member_type' ];
+			}
+		}
+
+		$members_import_successful = true;
+		
+		if ( ! empty( $missing ) ) {
+			$members_import_successful = false;
+			foreach ( $missing as $k => $v ) {
+				$this->notices->add_error( sprintf( __( 'Invalid file. One or more of your rows is missing the required field: "%s".', 'asamp' ), $k ) );
+			}
+		}
+		
+		if ( ! empty( $invalid_member_types ) ) {
+			$members_import_successful = false;
+			$invalid_member_types = array_unique( $invalid_member_types );
+			foreach ( $invalid_member_types as $k => $v ) {
+				$this->notices->add_error( sprintf( __( 'Invalid file. One or more of your rows has the "member_type" column set to: "%s". "%s" is not a recognized member type.', 'asamp' ), $v, $v ) );
+			}
+		}
+
+		if ( ! $members_import_successful ) {
+			wp_redirect( esc_url_raw( add_query_arg( 'members_import_successful', 'false' ) ) );
+			exit();
+		}
+
+		foreach ( $members as $member ) {
+			foreach ( $member as $k => $v ) {
+				$member[ $k ] = trim( $v );
+			}
 
 			$userdata = array(
-				'user_login'           => $member[ 'login' ],
-				'user_pass'            => ! empty( $member[ 'pass' ] ) ? $member[ 'pass' ] : wp_generate_password( rand( 12, 18 ) ),
-				'user_nicename'        => sanitize_html_class( $member[ 'company_name' ] ),
-				'user_url'             => strtolower( $member[ 'company_website' ] ),
-				'user_email'           => strtolower( $member[ 'company_email' ] ),
-				'display_name'         => $member[ 'company_name' ],
-				'description'          => $member[ 'company_description' ],
-				'rich_editing'         => false,
-				'syntax_highlighting'  => false,
-				'show_admin_bar_front' => false,
+				'user_login'    => $member[ 'login' ],
+				'user_email'    => strtolower( $member[ 'company_email' ] ),
+				'user_nicename' => sanitize_html_class( $member[ 'company_name' ] ),
+				'display_name'  => $member[ 'company_name' ],
 			);
 
-			$user_id = wp_insert_user( $userdata );
+			if ( ! empty( $member[ 'pass' ] ) )                $userdata[ 'user_pass' ]    = $member[ 'pass' ];
+			if ( ! empty( $member[ 'company_website' ] ) )     $userdata[ 'user_url' ]     = strtolower( $member[ 'company_website' ] );
+			if ( ! empty( $member[ 'company_description' ] ) ) $userdata[ 'description' ]  = $member[ 'company_description' ];
 
-			$role = array_search( trim( $member[ 'member_type' ] ) . ' ', $roles );
+			$user_id = $this->insert_update_member( $member, $userdata );
+
+			$role = array_search( $member[ 'member_type' ] . ' ', $roles );
 			$u = new WP_User( $user_id );
 			$u->add_role( $role );
 			$u->remove_role( 'subscriber' );
 
-			/*$this->write_log( $roles, 'roles' );
-			$this->write_log( $role, 'role' );
-			$this->write_log( $member[ 'member_type' ], 'type' );
-			$this->write_log( $u, 'user' );*/
+			update_user_option( $user_id, 'show_admin_bar_front', 'false' );
 
-			update_user_meta( $user_id, 'first_name',                      $member[ 'company_name' ] );
-			update_user_meta( $user_id, 'nickname',                        $member[ 'company_name' ] );
-			update_user_meta( $user_id, $prefix . 'member_date_joined',    $member[ 'member_date_joined' ] );
-			update_user_meta( $user_id, $prefix . 'member_expiry',         $member[ 'member_expiry' ] );
-			update_user_meta( $user_id, $prefix . 'member_status',         $member[ 'member_status' ] );
-			update_user_meta( $user_id, $prefix . 'company_name',          $member[ 'company_name' ] );
-			update_user_meta( $user_id, $prefix . 'member_type',           $role );
-			update_user_meta( $user_id, $prefix . 'company_year_founded',  $member[ 'company_year_founded' ] );
-			update_user_meta( $user_id, $prefix . 'company_num_employees', $member[ 'company_num_employees' ] );
-			update_user_meta( $user_id, $prefix . 'company_website',       strtolower( $member[ 'company_website' ] ) );
-			update_user_meta( $user_id, $prefix . 'company_email',         strtolower( $member[ 'company_email' ] ) );
-			update_user_meta( $user_id, $prefix . 'company_phone',         $member[ 'company_phone' ] );
-			update_user_meta( $user_id, $prefix . 'company_fax',           $member[ 'company_fax' ] );
-			update_user_meta( $user_id, $prefix . 'company_street',        $member[ 'company_street' ] );
-			update_user_meta( $user_id, $prefix . 'company_city',          $member[ 'company_city' ] );
-			update_user_meta( $user_id, $prefix . 'company_state',         $member[ 'company_state' ] );
-			update_user_meta( $user_id, $prefix . 'company_zip',           $member[ 'company_zip' ] );
+			$user_meta = array(
+				'first_name'                      => $member[ 'company_name' ],
+				'nickname'                        => $member[ 'company_name' ],
+				$prefix . 'member_date_joined'    => $member[ 'member_date_joined' ],
+				$prefix . 'member_expiry'         => $member[ 'member_expiry' ],
+				$prefix . 'member_status'         => $member[ 'member_status' ],
+				$prefix . 'company_name'          => $member[ 'company_name' ],
+				$prefix . 'member_type'           => $role,
+				$prefix . 'company_year_founded'  => $member[ 'company_year_founded' ],
+				$prefix . 'company_num_employees' => $member[ 'company_num_employees' ],
+				$prefix . 'company_website'       => strtolower( $member[ 'company_website' ] ),
+				$prefix . 'company_email'         => strtolower( $member[ 'company_email' ] ),
+				$prefix . 'company_phone'         => $member[ 'company_phone' ],
+				$prefix . 'company_fax'           => $member[ 'company_fax' ],
+				$prefix . 'company_street'        => $member[ 'company_street' ],
+				$prefix . 'company_city'          => $member[ 'company_city' ],
+				$prefix . 'company_state'         => $member[ 'company_state' ],
+				$prefix . 'company_zip'           => $member[ 'company_zip' ],
+			);
+
+			foreach ( $user_meta as $k => $v ) {
+				update_user_meta( $user_id, $k, $v );
+			}
 		}
 	}
 
@@ -2181,11 +2249,13 @@ class ASA_Member_Portal {
 		);
 		
 		$cmb = new_cmb2_box( array(
-			'id'              => 'member_import',
+			'id'              => 'asamp_member_import',
 			'title'           => __( 'Import Members', 'asamp' ),
 			'show_on'         => $show_on,
 			'display_cb'      => false,
 			'admin_menu_hook' => false,
+			'hookup'          => false,
+			'save_fields'     => false,
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'Upload File', 'asamp' ),
@@ -2615,6 +2685,79 @@ class ASA_Member_Portal {
 		} else {
 			error_log( $log );
 		}
+	}
+
+}
+
+/**
+ * One_Time_Notice Handling
+ */
+class ASAMP_One_Time_Notices {
+	public $errors   = array();
+	public $warnings = array();
+	public $success  = array();
+
+	/**
+	 * Constructs the object.
+	 */
+	public function __construct() {
+		add_action( 'admin_notices', array( $this, 'output_notices' ) );
+		add_action( 'shutdown',      array( $this, 'save_notices'   ) );
+	}
+
+	/**
+	 * Adds an error.
+	 */
+	public function add_error( $text ) {
+		$this->errors[] = $text;
+	}
+
+	/**
+	 * Adds a warning.
+	 */
+	public function add_warning( $text ) {
+		$this->warnings[] = $text;
+	}
+
+	/**
+	 * Adds a success message.
+	 */
+	public function add_success( $text ) {
+		$this->success[] = $text;
+	}
+
+	/**
+	 * Saves notices to an option.
+	 */
+	public function save_notices() {
+		$notices = array(
+			'error'   => $this->errors,
+			'warning' => $this->warnings,
+			'updated' => $this->success,
+		);
+
+		update_option( 'asamp_one_time_notices', $notices );
+	}
+
+	/**
+	 * Shows any stored error messages.
+	 */
+	public function output_notices() {
+		$notices = maybe_unserialize( get_option( 'asamp_one_time_notices' ) );
+
+		foreach ( $notices as $k => $v ) {
+			if ( ! empty( $v ) ) {
+				
+				foreach ( $v as $notice ) {
+					echo '<div id="asamp-' . $k . '" class="' . $k . ' notice is-dismissible">';
+						echo '<p>' . wp_kses_post( $notice ) . '</p>';
+					echo '</div>';
+				}
+				
+			}
+		}
+
+		delete_option( 'asamp_one_time_notices' );
 	}
 
 }
