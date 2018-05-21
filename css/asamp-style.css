@@ -167,6 +167,10 @@ form[id^='asamp'] .cmb-repeat > .cmb-td .cmb-add-row-button {
 	padding: 1em;
 }
 
+div.asamp-submission-error-message p:last-child {
+	margin-bottom: 0;
+}
+
 .asamp-submission-error-message,
 .asamp-validation-error-message {
 	background-color: #f8d7da;

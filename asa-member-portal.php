@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           1.1.2
+ * Version:           1.1.5
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -21,7 +21,7 @@ use League\Csv\Writer;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $version          = '1.1.2'; // str             Current version.
+	private $version          = '1.1.5'; // str             Current version.
 	private $plugin_file_path = '';      // str             Absolute path to this file.      (with trailing slash)
 	private $plugin_dir_path  = '';      // str             Absolute path to this directory. (with trailing slash)
 	private $plugin_dir_url   = '';      // str             URL of this directory.           (with trailing slash)
@@ -73,6 +73,7 @@ class ASA_Member_Portal {
 		add_action( 'cmb2_init',       array( $this, 'login_form_init'       ) );
 		add_action( 'cmb2_init',       array( $this, 'dues_payments_init'    ) );
 		add_action( 'cmb2_admin_init', array( $this, 'options_init'          ) );
+		add_action( 'cmb2_admin_init', array( $this, 'members_only_init'     ) );
 		add_action( 'cmb2_admin_init', array( $this, 'import_members'        ) );
 		add_action( 'cmb2_after_init', array( $this, 'frontend_user_profile' ) );
 		add_action( 'cmb2_after_init', array( $this, 'frontend_user_login'   ) );
@@ -87,6 +88,8 @@ class ASA_Member_Portal {
 		add_action( 'admin_footer', array( $this, 'add_export_members_link' ) );
 
 		add_filter( 'plugin_action_links_' . plugin_basename( $this->plugin_file_path ), array( $this, 'add_settings_link' ), 10, 1 );
+
+		add_filter( 'the_content', array( $this, 'hide_content' ), 99, 1 );
 	}
 
 	/**
@@ -280,6 +283,27 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Returns an associative array of the user accounts created by this plugin.
+	 * Includes id and label. To be used in a select field on the frontend.
+	 *
+	 * @return array $members
+	 */
+	private function get_asamp_user_list_select() {
+		$args = array(
+			'role__in' => array_keys( $this->get_asamp_roles() ),
+		);
+		$user_query = new WP_User_Query( $args );
+		$users = $user_query->get_results();
+
+		$members = array( '' => 'Choose&hellip;' );
+		foreach ( $users as $user ) {
+			$members[ $user->ID ] = $user->data->display_name;
+		}
+
+		return $members;
+	}
+
+	/**
 	 * Sets user options based on role.
 	 *
 	 * @param int            $user_id
@@ -442,10 +466,10 @@ class ASA_Member_Portal {
 	 * @return str $output
 	 */
 	public function shortcode_asamp_member_payment_form( $atts = array() ) {
-		$prefix = 'asamp_payment_';
+		$form_id = 'asamp_payment_form';
 		$output = '';
 
-		$cmb = cmb2_get_metabox( $prefix . 'form' );
+		$cmb = cmb2_get_metabox( $form_id );
 
 		if ( $error = $cmb->prop( 'submission_error' ) ) {
 			$output .= '<div class="alert alert-danger asamp-submission-error-message">' . sprintf( __( 'There was an error in the submission: %s', 'asamp' ), '<strong>' . $error . '</strong>' ) . '</div>';
@@ -462,6 +486,28 @@ class ASA_Member_Portal {
 		}
 
 		$output .= cmb2_get_metabox_form( $cmb, '', array( 'save_button' => __( 'Submit Payment', 'asamp' ) ) );
+
+		if ( $validation_errors = $cmb->prop( 'validation_errors' ) ) {
+			ob_start();
+			// TODO: enqueue this script properly with jQuery as a dependency.
+			?>
+				<script>
+					(function($){
+						'use strict';
+						$(document).ready(function(){
+							var asampMPVE = <?php echo json_encode( $validation_errors ); ?>;
+							$.each(asampMPVE, function(key, data){
+								$('form#<?php echo $form_id; ?> #'+key).addClass('asamp-validation-error').after('<div class="asamp-validation-error-message alert alert-danger">'+data+'</div>');
+							});
+							$('form#<?php echo $form_id; ?>').on('click', '.asamp-validation-error', function(){
+								$(this).removeClass('asamp-validation-error');
+							});
+						});
+					})(jQuery);
+				</script>
+			<?php
+			$output .= ob_get_clean();
+		}
 
 		return $output;
 	}
@@ -819,6 +865,12 @@ class ASA_Member_Portal {
 
 		$sanitized_values = $cmb->get_sanitized_values( $_POST );
 
+		if ( $validation_errors = $this->validate_dues_payment_form( $sanitized_values, $_POST, $prefix ) ) {
+			$cmb->prop( 'submission_error', __( 'Please correct the errors below.', 'asamp' ) );
+			$cmb->prop( 'validation_errors', $validation_errors );
+			return $cmb;
+		}
+
 		$payment_processor = '';
 		foreach ( $this->options as $k => $v ) {
 			if ( 0 === strpos( $k, 'payment_' ) && false !== strpos( $k, '_enabled' ) && 'yes' === $v ) {
@@ -867,17 +919,17 @@ class ASA_Member_Portal {
 				update_post_meta( $payment_id, '_asamp_dues_cc_number', '************' . substr( $sanitized_values[ $prefix . 'cc_number' ], -4 ) );
 				update_post_meta( $payment_id, '_asamp_dues_cc_expiry', $sanitized_values[ $prefix . 'cc_year'  ] . '-' . $sanitized_values[ $prefix . 'cc_month'  ] );
 				
-				if ( $this->is_member() ) {
-					update_post_meta( $payment_id, '_asamp_dues_member_account', $this->user()->user_login );
-					$this->set_member_role( $sanitized_values[ $prefix . 'member_type' ] );
-					wp_update_user( $this->user );
-					update_user_meta( $this->user()->ID, 'asamp_user_member_type', $sanitized_values[ $prefix . 'member_type' ] );
-					update_user_meta( $this->user()->ID, 'asamp_user_member_status', 'active' );
-					if ( strtotime( $this->user_meta()->asamp_user_member_expiry ) > strtotime( date( 'Y-m-d' ) ) ) {
-						update_user_meta( $this->user()->ID, 'asamp_user_member_expiry', date( 'Y-m-d', strtotime( $this->user_meta()->asamp_user_member_expiry . ' + 1 Year' ) ) );
-					} else {
-						update_user_meta( $this->user()->ID, 'asamp_user_member_expiry', date( 'Y-m-d', strtotime( date( 'Y-m-d' ) . ' + 1 Year' ) ) );
-					}
+				if ( ! $this->is_member() ) $this->user = wp_set_current_user( $sanitized_values[ $prefix . 'member_account' ] );
+
+				update_post_meta( $payment_id, '_asamp_dues_member_account', $this->user()->user_login );
+				$this->set_member_role( $sanitized_values[ $prefix . 'member_type' ] );
+				wp_update_user( $this->user );
+				update_user_meta( $this->user()->ID, 'asamp_user_member_type', $sanitized_values[ $prefix . 'member_type' ] );
+				update_user_meta( $this->user()->ID, 'asamp_user_member_status', 'active' );
+				if ( strtotime( $this->user_meta()->asamp_user_member_expiry ) > strtotime( date( 'Y-m-d' ) ) ) {
+					update_user_meta( $this->user()->ID, 'asamp_user_member_expiry', date( 'Y-m-d', strtotime( $this->user_meta()->asamp_user_member_expiry . ' + 1 Year' ) ) );
+				} else {
+					update_user_meta( $this->user()->ID, 'asamp_user_member_expiry', date( 'Y-m-d', strtotime( date( 'Y-m-d' ) . ' + 1 Year' ) ) );
 				}
 
 				$blog_name = get_bloginfo( 'name' );
@@ -925,7 +977,8 @@ class ASA_Member_Portal {
 
 				// user email
 				$headers = array( 'Content-Type: text/html; charset=UTF-8' );
-				$to      = $this->user_meta()->asamp_user_company_name . ' <' . $this->user_meta()->asamp_user_company_email . '>';
+				//$to      = $this->user_meta()->asamp_user_company_name . ' <' . $this->user_meta()->asamp_user_company_email . '>';
+				$to      = $this->user_meta()->asamp_user_company_email;
 				$subject = __( 'Receipt for your Dues Payment to: ', 'asamp' ) . $blog_name;
 				$sent    = false;
 				if ( wp_mail( $to, $subject, $message, $headers ) ) {
@@ -1170,6 +1223,25 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Validates that the user filled out certain payment fields with appropriate values.
+	 *
+	 * @param array $posted_values
+	 * @param array $sanitized_values
+	 * @param array $prefix (optional)
+	 *
+	 * @return array $bad_fields OR false
+	 */
+	private function validate_dues_payment_form( $posted_values, $sanitized_values, $prefix = '' ) {
+		$bad_fields = array();
+
+		if ( ! $this->is_member() && empty( $sanitized_values[ $prefix . 'member_account' ] ) ) {
+			$bad_fields[ $prefix . 'member_account' ] = __( 'Please choose a Member whose account you wish to activate or renew.', 'asamp' );
+		}
+
+		return ! empty( $bad_fields ) ? $bad_fields : false;
+	}
+
+	/**
 	 * Validates that the user filled out certain profile fields with appropriate values.
 	 *
 	 * @param array $posted_values
@@ -1366,7 +1438,9 @@ class ASA_Member_Portal {
 		foreach ( $users as $key => $value ) {
 			$user = $this->flatten_array( get_user_meta( $value->ID ) );
 
-			$user[ 'member_type' ] = $roles[ $user[ 'member_type' ] ];
+			$user[ $prefix . 'login' ] = $value->data->user_login;
+
+			$user[ $prefix . 'member_type' ] = $roles[ $user[ $prefix . 'member_type' ] ];
 			
 			if ( ! empty( $user[ $prefix . 'company_contacts' ] ) ) {
 				$contacts = unserialize( $user[ $prefix . 'company_contacts' ] );
@@ -1465,6 +1539,10 @@ class ASA_Member_Portal {
 			'member_expiry',
 		);
 		foreach ( $members as $member ) {
+			foreach ( $member as $k => $v ) {
+				$member[ $k ] = trim( $v );
+			}
+
 			foreach ( $required as $field ) {
 				if ( empty( $member[ $field ] ) ) {
 					$missing[ $field ] = true;
@@ -1498,7 +1576,9 @@ class ASA_Member_Portal {
 			exit();
 		}
 
+		$n = 0;
 		foreach ( $members as $member ) {
+			$n++;
 			foreach ( $member as $k => $v ) {
 				$member[ $k ] = trim( $v );
 			}
@@ -1524,29 +1604,96 @@ class ASA_Member_Portal {
 			update_user_option( $user_id, 'show_admin_bar_front', 'false' );
 
 			$user_meta = array(
-				'first_name'                      => $member[ 'company_name' ],
-				'nickname'                        => $member[ 'company_name' ],
-				$prefix . 'member_date_joined'    => $member[ 'member_date_joined' ],
-				$prefix . 'member_expiry'         => $member[ 'member_expiry' ],
-				$prefix . 'member_status'         => $member[ 'member_status' ],
-				$prefix . 'company_name'          => $member[ 'company_name' ],
-				$prefix . 'member_type'           => $role,
-				$prefix . 'company_year_founded'  => $member[ 'company_year_founded' ],
-				$prefix . 'company_num_employees' => $member[ 'company_num_employees' ],
-				$prefix . 'company_website'       => strtolower( $member[ 'company_website' ] ),
-				$prefix . 'company_email'         => strtolower( $member[ 'company_email' ] ),
-				$prefix . 'company_phone'         => $member[ 'company_phone' ],
-				$prefix . 'company_fax'           => $member[ 'company_fax' ],
-				$prefix . 'company_street'        => $member[ 'company_street' ],
-				$prefix . 'company_city'          => $member[ 'company_city' ],
-				$prefix . 'company_state'         => $member[ 'company_state' ],
-				$prefix . 'company_zip'           => $member[ 'company_zip' ],
+				'first_name'                            => $member[ 'company_name' ],
+				'nickname'                              => $member[ 'company_name' ],
+				$prefix . 'member_date_joined'          => $member[ 'member_date_joined' ],
+				$prefix . 'member_expiry'               => $member[ 'member_expiry' ],
+				$prefix . 'member_status'               => $member[ 'member_status' ],
+				$prefix . 'company_name'                => $member[ 'company_name' ],
+				$prefix . 'member_type'                 => $role,
+				$prefix . 'company_year_founded'        => $member[ 'company_year_founded' ],
+				$prefix . 'company_num_employees'       => $member[ 'company_num_employees' ],
+				$prefix . 'company_website'             => strtolower( $member[ 'company_website' ] ),
+				$prefix . 'company_email'               => strtolower( $member[ 'company_email' ] ),
+				$prefix . 'company_phone'               => $member[ 'company_phone' ],
+				$prefix . 'company_fax'                 => $member[ 'company_fax' ],
+				$prefix . 'company_street'              => $member[ 'company_street' ],
+				$prefix . 'company_city'                => $member[ 'company_city' ],
+				$prefix . 'company_state'               => $member[ 'company_state' ],
+				$prefix . 'company_zip'                 => $member[ 'company_zip' ],
+				$prefix . 'company_contacts'            => $this->get_contacts_from_csv( $member, 'company_contacts' ),
+				$prefix . 'company_business_type'       => $this->get_business_types_from_csv( $member, 'company_business_type' ),
+				$prefix . 'company_business_type_other' => $this->get_business_types_from_csv( $member, 'company_business_type', true ),
 			);
 
 			foreach ( $user_meta as $k => $v ) {
 				update_user_meta( $user_id, $k, $v );
 			}
 		}
+
+		$this->notices->add_success( sprintf( __( 'Successfully imported and/or updated %s members.', 'asamp' ), $n ) );
+		wp_redirect( esc_url_raw( add_query_arg( 'members_import_successful', 'true' ) ) );
+		exit();
+	}
+
+	/**
+	 * Returns a multi-dimensinal array.
+	 *
+	 * @param array $member
+	 * @param str   $prefix
+	 *
+	 * @return array $contacts
+	 */
+	private function get_contacts_from_csv( $member, $prefix ) {
+		$contacts = array();
+
+		foreach ( $member as $k => $v ) {
+			if ( false === strpos( $k, $prefix ) ) continue;
+
+			$k = str_replace( $prefix . '_', '', $k );
+			$n = substr( $k, 0, strpos( $k, '_') );
+			$k = str_replace( $n . '_', '', $k );
+
+			$contacts[ intval( $n ) - 1 ][ $k ] = $v;
+		}
+
+		return $contacts;
+	}
+
+	/**
+	 * Returns an array.
+	 *
+	 * @param array $member
+	 * @param str   $prefix
+	 * @param bool  $other
+	 *
+	 * @return array $types
+	 */
+	private function get_business_types_from_csv( $member, $prefix, $other = false ) {
+		$types = array();
+		foreach ( $member as $k => $v ) {
+			if ( false === strpos( $k, $prefix ) ) continue;
+			$types[] = htmlspecialchars( htmlspecialchars_decode( $v ) );
+		}
+
+		$trades = array();
+		if ( ! empty( $this->options[ 'trades' ] ) ) {
+			$trades = explode( "\r\n", $this->options[ 'trades' ] );
+		} else {
+			$trades = $this->get_default_trades_array();
+		}
+
+		if ( $other ) {
+			$types = array_diff( $types, $trades );
+		} else {
+			$types = array_intersect( $types, $trades );
+		}
+
+		foreach ( $types as $k => $v ) {
+			$types[ $k ] = esc_attr__( $v );
+		}
+		
+		return $types;
 	}
 
 	/**
@@ -1783,6 +1930,64 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Registers a "Members Only" metabox on posts and pages.
+	 *
+	 * @return void
+	 */
+	public function members_only_init() {
+		$prefix = '_asamp_members_only_';
+
+		$options = $this->get_asamp_roles_select();
+		$options[ 'everyone' ] = 'Everyone';
+
+		$cmb = new_cmb2_box( array(
+			'id'           => $prefix . 'form',
+			'title'        => __( 'Content Access Settings', 'asamp' ),
+			'object_types' => array( 'post', 'page' ),
+			'context'      => 'side',
+			'priority'     => 'default',
+		) );
+		$cmb->add_field( array(
+			'name'    => __( 'Show Content To:', 'asamp' ),
+			'id'      => $prefix . 'level',
+			'type'    => 'multicheck',
+			'default' => 'everyone',
+			'options' => $options,
+		) );
+	}
+
+	/**
+	 * Displays a "content restricted" message if content is restricted and active member is not logged in.
+	 *
+	 * @return str $content
+	 */
+	public function hide_content( $content ) {
+		if ( is_singular() && is_main_query() ) {
+
+			$access_level = get_post_meta( get_the_ID(), '_asamp_members_only_level', true );
+
+			if ( empty( $access_level ) || in_array( 'everyone', $access_level ) ) return $content;
+
+			if ( ! $this->is_member() ) return '<div class="asamp-submission-error-message"><p>' . __( 'This content is restricted. Only members may view it. Please log in or register.', 'asamp' ) . '</p></div>';
+
+			if ( 'inactive' === $this->user_meta()->asamp_user_member_status ) return '<div class="asamp-submission-error-message"><p>' . __( 'Your membership is not active. Please activate or renew your membership.', 'asamp' ) . '</p></div>';
+
+			if ( ! in_array( $this->user_meta()->asamp_user_member_type, $access_level ) ) {
+				$member_types = $this->get_asamp_roles_select();
+				$content = '<div class="asamp-submission-error-message"><p>' . __( 'This content is restricted. Only the following member types may view it:', 'asamp' ) . '</p><ul>';
+				foreach ( $access_level as $level ) {
+					$content .= '<li>' . $member_types[ $level ] . '</li>';
+				}
+				$content .= '</ul><p>' . __( 'Please upgrade your membership.', 'asamp' ) . '</p></div>';
+				return $content;
+			}
+			
+		}
+
+		return $content;
+	}
+
+	/**
 	 * Registers a frontend payment form.
 	 *
 	 * @return void
@@ -1801,6 +2006,14 @@ class ASA_Member_Portal {
 			'type'            => 'title',
 			'render_row_cb'   => array( $this, 'open_fieldset' ),
 		) );
+		if ( ! $this->is_member() ) {
+			$cmb->add_field( array(
+				'name'       => __( 'Member Account', 'asamp' ),
+				'id'         => $prefix . 'member_account',
+				'type'       => 'select',
+				'options'    => $this->get_asamp_user_list_select(),
+			) );
+		}
 		$cmb->add_field( array(
 			'name'       => ! empty( $this->options[ 'member_type_label' ] ) ? $this->options[ 'member_type_label' ] : $this->get_default_member_type_label(),
 			'id'         => $prefix . 'member_type',
@@ -1987,12 +2200,12 @@ class ASA_Member_Portal {
 		//$has_recaptcha = get_option( 'gglcptch_options' );
 		//if ( empty( $has_recaptcha[ 'public_key' ] ) && empty( $has_recaptcha[ 'private_key' ] ) ) {
 			$cmb->add_field( array(
-				'name'            => __( 'Google "reCAPTCHA v3" Site Key', 'asamp' ),
+				'name'            => __( 'Google reCAPTCHA Site Key', 'asamp' ),
 				'id'              => 'google_recaptcha_site_key',
 				'type'            => 'text',
 			) );
 			$cmb->add_field( array(
-				'name'            => __( 'Google "reCAPTCHA v3" Secret Key', 'asamp' ),
+				'name'            => __( 'Google reCAPTCHA Secret Key', 'asamp' ),
 				'id'              => 'google_recaptcha_secret_key',
 				'type'            => 'text',
 			) );
