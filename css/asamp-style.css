@@ -249,10 +249,16 @@ div.asamp-submission-error-message p:last-child {
 }
 
 .asamp-company-business-types li {
+	font-size: 0.8em;
 	display: inline-block;
+	color: #2d2d2d;
 	background-color: #ebebeb;
-	margin: 0 0.3em 0.3em 0;
+	margin: 0 5px 2px 0;
 	padding: 0 0.4em;
+}
+
+.asamp-company-business-types li a {
+	color: inherit;
 }
 
 .asamp-company-business-types li:last-child {

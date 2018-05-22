@@ -564,7 +564,7 @@ class ASA_Member_Portal {
 									$business_types = maybe_unserialize( $meta[ 'asamp_user_company_business_type' ] );
 									if ( is_array( $business_types ) ) {
 										foreach ( $business_types as $type ) {
-											?><li><?php echo $type; ?></li><?php
+											?><li><a href="#"><?php echo $type; ?></a></li><?php
 										}
 									}
 									$business_types_other = maybe_unserialize( $meta[ 'asamp_user_company_business_type_other' ] );
