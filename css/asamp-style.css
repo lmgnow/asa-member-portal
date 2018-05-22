@@ -163,7 +163,7 @@ form[id^='asamp'] .cmb-repeat > .cmb-td .cmb-add-row-button {
 	left: 0;
 	top: 0;
 	background-color: #fff;
-	border: 1px solid #ddd;
+	border: 1px solid #ebebeb;
 	padding: 1em;
 }
 
@@ -210,4 +210,66 @@ div.asamp-submission-error-message p:last-child {
 .asamp-validation-error-message ul {
 	padding-top: 1em;
 	padding-left: 2em;
+}
+
+.asamp-dir,
+.asamp-dir ul,
+.asamp-dir ol,
+.asamp-dir p,
+.asamp-dir h2,
+.asamp-dir h3,
+.asamp-dir h4,
+.asamp-dir address {
+	padding: 0;
+	margin: 0;
+	list-style-type: none;
+}
+
+.asamp-dir svg {
+	height: 1em;
+	width: 1em;
+	margin-right: 0.4em;
+	fill: #2d2d2d;
+	vertical-align: top;
+	margin-top: 0.4em;
+}
+
+.asamp-member {
+	padding-bottom: 2em;
+	margin-bottom: 1em;
+	border-bottom: 1px solid #ebebeb;
+}
+
+.asamp-member:last-child {
+	border-bottom: none;
+}
+
+.asamp-company-description p {
+	margin-bottom: 0.6em;
+}
+
+.asamp-company-business-types li {
+	display: inline-block;
+	background-color: #ebebeb;
+	margin: 0 0.3em 0.3em 0;
+	padding: 0 0.4em;
+}
+
+.asamp-company-business-types li:last-child {
+	margin-right: 0;
+}
+
+.asamp-company-address {
+	display: inline-block;
+}
+
+.asamp-contact-name {
+	display: inline;
+}
+
+.asamp-contact-title {
+	display: inline;
+}
+
+.asamp-contact-position {
 }

@@ -515,6 +515,17 @@ class ASA_Member_Portal {
 	/**
 	 * Generates a member directory.
 	 *
+	 * @param str $str
+	 *
+	 * @return str $str
+	 */
+	private function svg( $str ) {
+		return '<svg><use xlink:href="' . $this->plugin_dir_url . 'images/asamp-icons.svg#' . $str . '"></use></svg>';
+	}
+
+	/**
+	 * Generates a member directory.
+	 *
 	 * @return str $output
 	 */
 	public function shortcode_asamp_member_directory( $atts = array() ) {
@@ -534,50 +545,89 @@ class ASA_Member_Portal {
 		$show = $this->is_member() ? 'all' : $show;
 
 		ob_start();
+		//echo file_get_contents( $this->plugin_dir_path . 'images/asamp-icons.svg' );
 		?>
 			<ul class="asamp-dir">
 				<?php foreach ( $users as $user ) : ?>
 					<?php $meta = $this->flatten_array( get_user_meta( $user->ID ) ); ?>
 					<li class="asamp-member">
-						<h3 class="asamp-company-name"><?php echo $meta[ 'asamp_user_company_name' ]; ?></h3>
-						<?php if ( 'all' === $show ) : ?>
-							<p><a href="<?php echo $meta[ 'asamp_user_company_website' ]; ?>" target="_blank" rel="noopener"><?php echo $meta[ 'asamp_user_company_website' ]; ?></a></p>
+						<h2 class="asamp-company-name"><?php echo $meta[ 'asamp_user_company_name' ]; ?></h2>
+						<?php if ( ! empty( $meta[ 'asamp_user_company_website' ] ) && 'all' === $show ) : ?>
+							<a class="asamp-company-website" href="<?php echo $meta[ 'asamp_user_company_website' ]; ?>" target="_blank" rel="noopener"><?php echo $this->svg( 'link' ) . ' ' . $meta[ 'asamp_user_company_website' ]; ?></a>
 						<?php endif; ?>
-						<p><?php echo $meta[ 'asamp_user_company_description' ]; ?></p>
-						<p>
-							<?php
-								$business_types = maybe_unserialize( $meta[ 'asamp_user_company_business_type' ] );
-								if ( is_array( $business_types ) ) {
-									$str = '';
-									foreach ( $business_types as $type ) {
-										$str .= $type . ', ';
+						<?php if ( ! empty( $meta[ 'asamp_user_company_description' ] ) ) : ?>
+							<div class="asamp-company-description"><?php echo wpautop( $meta[ 'asamp_user_company_description' ] ); ?></div>
+						<?php endif; ?>
+						<?php if ( ! empty( $meta[ 'asamp_user_company_business_type' ] ) || ! empty( $meta[ 'asamp_user_company_business_type_other' ] ) ) : ?>
+							<ul class="asamp-company-business-types">
+								<?php
+									$business_types = maybe_unserialize( $meta[ 'asamp_user_company_business_type' ] );
+									if ( is_array( $business_types ) ) {
+										foreach ( $business_types as $type ) {
+											?><li><?php echo $type; ?></li><?php
+										}
 									}
-									$business_types = rtrim( $str, ', ' );
-								}
-								echo $business_types;
-							?>
-						</p>
+									$business_types_other = maybe_unserialize( $meta[ 'asamp_user_company_business_type_other' ] );
+									if ( is_array( $business_types_other ) ) {
+										foreach ( $business_types_other as $type ) {
+											?><li><?php echo $type; ?></li><?php
+										}
+									}
+								?>
+							</ul>
+						<?php endif; ?>
 						<?php if ( 'all' === $show ) : ?>
 							
-							<p><a href="tel:<?php echo $meta[ 'asamp_user_company_phone' ]; ?>"><?php echo $meta[ 'asamp_user_company_phone' ]; ?></a></p>
-							<p><a href="tel:<?php echo $meta[ 'asamp_user_company_fax' ]; ?>"><?php echo $meta[ 'asamp_user_company_fax' ]; ?></a></p>
-							<p><a href="mailto:<?php echo $meta[ 'asamp_user_company_email' ]; ?>"><?php echo $meta[ 'asamp_user_company_email' ]; ?></a></p>
-							<address>
-								<?php echo $meta[ 'asamp_user_company_street' ]; ?> <br />
-								<?php echo $meta[ 'asamp_user_company_city' ] . ', ' . $meta[ 'asamp_user_company_state' ] . ' ' . $meta[ 'asamp_user_company_zip' ]; ?>
-							</address>
+							<?php if ( ! empty( $meta[ 'asamp_user_company_phone' ] ) || ! empty( $meta[ 'asamp_user_company_fax' ] ) || ! empty( $meta[ 'asamp_user_company_email' ] ) || ! empty( $meta[ 'asamp_user_company_street' ] ) || ! empty( $meta[ 'asamp_user_company_city' ] ) || ! empty( $meta[ 'asamp_user_company_state' ] ) || ! empty( $meta[ 'asamp_user_company_zip' ] ) ) : ?>
+								<ul class="asamp-company-contact-info">
+									<?php if ( ! empty( $meta[ 'asamp_user_company_phone' ] ) ) : ?>
+										<li><a class="asamp-company-phone" href="tel:<?php echo $this->format_tel( $meta[ 'asamp_user_company_phone' ] ); ?>"><?php echo $this->svg( 'phone' ) . ' ' . $meta[ 'asamp_user_company_phone' ]; ?></a></li>
+									<?php endif; ?>
+									<?php if ( ! empty( $meta[ 'asamp_user_company_fax' ] ) ) : ?>
+										<li><a class="asamp-company-fax" href="tel:<?php echo $this->format_tel( $meta[ 'asamp_user_company_fax' ] ); ?>"><?php echo $this->svg( 'fax' ) . ' ' . $meta[ 'asamp_user_company_fax' ]; ?></a></li>
+									<?php endif; ?>
+									<?php if ( ! empty( $meta[ 'asamp_user_company_email' ] ) ) : ?>
+										<li><a class="asamp-company-email" href="mailto:<?php echo $meta[ 'asamp_user_company_email' ]; ?>"><?php echo $this->svg( 'email' ) . ' ' . $meta[ 'asamp_user_company_email' ]; ?></a></li>
+									<?php endif; ?>
+									<?php if ( ! empty( $meta[ 'asamp_user_company_street' ] ) || ! empty( $meta[ 'asamp_user_company_city' ] ) || ! empty( $meta[ 'asamp_user_company_state' ] ) || ! empty( $meta[ 'asamp_user_company_zip' ] ) ) : ?>
+										<li><a href="#"><?php echo $this->svg( 'address' ); ?><address class="asamp-company-address"><?php echo $meta[ 'asamp_user_company_street' ]; ?> <br /><?php echo $meta[ 'asamp_user_company_city' ] . ', ' . $meta[ 'asamp_user_company_state' ] . ' ' . $meta[ 'asamp_user_company_zip' ]; ?></address></a></li>
+									<?php endif; ?>
+								</ul>
+							<?php endif; ?>
 
 							<?php $contacts = maybe_unserialize( $meta[ 'asamp_user_company_contacts' ] ); ?>
 							<?php if ( is_array( $contacts ) ) : ?>
+								<h3>Contacts:</h3>
 								<ol class="asamp-contacts">
+									<?php $n = 0; ?>
 									<?php foreach ( $contacts as $contact ) : ?>
+										<?php
+											$n++;
+											if ( $n > $this->options[ 'num_contacts' ] ) break;
+										?>
 										<li class="asamp-contact">
-											<h4><?php echo $contact[ 'name_first' ] . ' ' . $contact[ 'name_last' ]; ?></h4>
-											<p><a href="tel:<?php echo $contact[ 'phone' ]; ?>"><?php echo $contact[ 'phone' ]; ?></a></p>
-											<p><?php echo $contact[ 'fax' ]; ?></p>
-											<p><a href="mailto:<?php echo $contact[ 'email' ]; ?>"><?php echo $contact[ 'email' ]; ?></a></p>
-											<p><?php echo $contact[ 'title' ]; ?></p>
-											<p><?php echo $contact[ 'asa_position' ]; ?></p>
+											<?php if ( ! empty( $contact[ 'name_first' ] ) || ! empty( $contact[ 'name_last' ] ) ) : ?>
+												<h4 class="asamp-contact-name"><?php echo $contact[ 'name_first' ] . ' ' . $contact[ 'name_last' ]; ?></h4>
+											<?php endif; ?>
+											<?php if ( ! empty( $contact[ 'title' ] ) ) : ?>
+												<p class="asamp-contact-title"><em><?php echo $contact[ 'title' ]; ?></em></p>
+											<?php endif; ?>
+											<?php if ( ! empty( $contact[ 'asa_position' ] ) ) : ?>
+												<p class="asamp-contact-position"><?php _e( 'ASA Position:', 'asamp' ); ?> <?php echo $contact[ 'asa_position' ]; ?></p>
+											<?php endif; ?>
+											<?php if ( ! empty( $contact[ 'phone' ] ) || ! empty( $contact[ 'fax' ] ) || ! empty( $contact[ 'email' ] ) ) : ?>
+											<ul>
+												<?php if ( ! empty( $contact[ 'phone' ] ) ) : ?>
+													<li><a href="tel:<?php echo $this->format_tel( $contact[ 'phone' ] ); ?>"><?php echo $this->svg( 'phone' ) . ' ' . $contact[ 'phone' ]; ?></a></li>
+												<?php endif; ?>
+												<?php if ( ! empty( $contact[ 'fax' ] ) ) : ?>
+													<li><a href="tel:<?php echo $this->format_tel( $contact[ 'fax' ] ); ?>"><?php echo $this->svg( 'fax' ) . ' ' . $contact[ 'fax' ]; ?></a></li>
+												<?php endif; ?>
+												<?php if ( ! empty( $contact[ 'email' ] ) ) : ?>
+													<li><a href="mailto:<?php echo $contact[ 'email' ]; ?>"><?php echo $this->svg( 'email' ) . ' ' . $contact[ 'email' ]; ?></a></li>
+												<?php endif; ?>
+											</ul>
+											<?php endif; ?>
 										</li><!-- /.asamp-contact -->
 									<?php endforeach; ?>
 								</ol><!-- /.asamp-contacts -->
@@ -846,6 +896,17 @@ class ASA_Member_Portal {
 		if ( is_admin() )                                               return false;
 
 		return true;
+	}
+
+	/**
+	 * Removes non-numeric characters from a string.
+	 *
+	 * @param str $str
+	 *
+	 * @return str $str
+	 */
+	private function format_tel( $str ) {
+		return preg_replace( '/[^0-9]/', '', $str );
 	}
 
 	/**
@@ -1261,13 +1322,13 @@ class ASA_Member_Portal {
 			$bad_fields[ $prefix . 'company_zip' ] = 'Please enter a valid US Zip Code.';
 		}
 
-		$phone = preg_replace( '/[^0-9]/', '', $sanitized_values[ $prefix . 'company_phone' ] );
+		$phone = $this->format_tel( $sanitized_values[ $prefix . 'company_phone' ] );
 		if ( strlen( $phone ) === 11) $phone = preg_replace( '/^1/', '', $phone );
 		if ( strlen( $phone ) !== 10 && ! empty( $sanitized_values[ $prefix . 'company_phone' ] ) ) {
 			$bad_fields[ $prefix . 'company_phone' ] = 'Please enter a 10-digit phone number.';
 		}
 
-		$fax = preg_replace( '/[^0-9]/', '', $sanitized_values[ $prefix . 'company_fax' ] );
+		$fax = $this->format_tel( $sanitized_values[ $prefix . 'company_fax' ] );
 		if ( strlen( $fax ) === 11) $fax = preg_replace( '/^1/', '', $fax );
 		if ( strlen( $fax ) !== 10 && ! empty( $sanitized_values[ $prefix . 'company_fax' ] ) ) {
 			$bad_fields[ $prefix . 'company_fax' ] = 'Please enter a 10-digit fax number.';
@@ -1280,14 +1341,14 @@ class ASA_Member_Portal {
 		if ( is_array( $sanitized_values[ $prefix . 'company_contacts' ] ) ) {
 			foreach ( $sanitized_values[ $prefix . 'company_contacts' ] as $k => $contact ) {
 				unset( $phone );
-				$phone = preg_replace( '/[^0-9]/', '', $contact[ 'phone' ] );
+				$phone = $this->format_tel( $contact[ 'phone' ] );
 				if ( strlen( $phone ) === 11) $phone = preg_replace( '/^1/', '', $phone );
 				if ( strlen( $phone ) !== 10 && ! empty( $contact[ 'phone' ] ) ) {
 					$bad_fields[ $prefix . 'company_contacts_' . $k . '_phone' ] = 'Please enter a 10-digit phone number.';
 				}
 
 				unset( $fax );
-				$fax = preg_replace( '/[^0-9]/', '', $contact[ 'fax' ] );
+				$fax = $this->format_tel( $contact[ 'fax' ] );
 				if ( strlen( $fax ) === 11) $fax = preg_replace( '/^1/', '', $fax );
 				if ( strlen( $fax ) !== 10 && ! empty( $contact[ 'fax' ] ) ) {
 					$bad_fields[ $prefix . 'company_contacts_' . $k . '_fax' ] = 'Please enter a 10-digit fax number.';
