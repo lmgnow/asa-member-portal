@@ -542,10 +542,19 @@ class ASA_Member_Portal {
 		if ( 'none' === $show && ! $this->is_member() )     return __( 'Please log in or register. Only members can see info about other members.', 'asamp' );
 		if ( empty( $users = $user_query->get_results() ) ) return __( 'No active members found.', 'asamp' );
 
+		if ( 'no' !== $this->options[ 'members_grouped_by_type' ] ) {
+			$order = $this->get_asamp_roles_select();
+			//$this->write_log( $order, 'oooorder' );
+			usort( $users, function( $a, $b ) {
+				$strcmp = strcmp( $a->roles[ 0 ], $b->roles[ 0 ] );
+				if ( 0 === $strcmp ) return 1;
+				return $strcmp;
+			} );
+		}
+
 		$show = $this->is_member() ? 'all' : $show;
 
 		ob_start();
-		//echo file_get_contents( $this->plugin_dir_path . 'images/asamp-icons.svg' );
 		?>
 			<ul class="asamp-dir">
 				<?php foreach ( $users as $user ) : ?>
