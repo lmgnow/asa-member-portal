@@ -4,7 +4,7 @@
  * Plugin Name:       ASA Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           1.1.6
+ * Version:           1.1.7
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -21,7 +21,7 @@ use League\Csv\Writer;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $version          = '1.1.6'; // str             Current version.
+	private $version          = '1.1.7'; // str             Current version.
 	private $plugin_file_path = '';      // str             Absolute path to this file.      (with trailing slash)
 	private $plugin_dir_path  = '';      // str             Absolute path to this directory. (with trailing slash)
 	private $plugin_dir_url   = '';      // str             URL of this directory.           (with trailing slash)
@@ -65,6 +65,7 @@ class ASA_Member_Portal {
 
 		add_action( 'user_register',  array( $this, 'set_user_options' ), 10, 1 );
 		add_action( 'profile_update', array( $this, 'set_user_options' ), 10, 1 );
+		add_action( 'profile_update', array( $this, 'profile_update'   ), 10, 1 );
 
 		add_action( 'save_post_asamp_dues_payment', array( $this, 'dues_payment_save' ), 10, 3 );
 
@@ -331,6 +332,7 @@ class ASA_Member_Portal {
 		add_shortcode( 'asamp_member_login_box',    array( $this, 'shortcode_asamp_member_login_box'    ) );
 		add_shortcode( 'asamp_member_payment_form', array( $this, 'shortcode_asamp_member_payment_form' ) );
 		add_shortcode( 'asamp_member_directory',    array( $this, 'shortcode_asamp_member_directory'    ) );
+		add_shortcode( 'asamp_member_map',          array( $this, 'shortcode_asamp_member_map'          ) );
 	}
 
 	/**
@@ -513,7 +515,7 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * Generates a member directory.
+	 * Generates an <svg> tag.
 	 *
 	 * @param str $str
 	 *
@@ -526,9 +528,14 @@ class ASA_Member_Portal {
 	/**
 	 * Generates a member directory.
 	 *
+	 * @param array $atts
+	 *
 	 * @return str $output
 	 */
 	public function shortcode_asamp_member_directory( $atts = array() ) {
+		$show = $this->options[ 'profiles_public' ];
+		if ( 'none' === $show && ! $this->is_member() ) return __( 'Please log in or register. Only members can see info about other members.', 'asamp' );
+
 		$output = '';
 		$args = array(
 			'role__in'   => array_keys( $this->get_asamp_roles() ),
@@ -536,11 +543,9 @@ class ASA_Member_Portal {
 			'meta_value' => 'active',
 		);
 		$user_query = new WP_User_Query( $args );
+		$users      = $user_query->get_results();
 
-		$show = $this->options[ 'profiles_public' ];
-
-		if ( 'none' === $show && ! $this->is_member() )     return __( 'Please log in or register. Only members can see info about other members.', 'asamp' );
-		if ( empty( $users = $user_query->get_results() ) ) return __( 'No active members found.', 'asamp' );
+		if ( empty( $users ) ) return __( 'No active members found.', 'asamp' );
 
 		if ( 'no' !== $this->options[ 'members_grouped_by_type' ] ) {
 			$order = $this->get_asamp_roles_select();
@@ -650,6 +655,105 @@ class ASA_Member_Portal {
 		$output .= ob_get_clean();
 
 		return $output;
+	}
+
+	/**
+	 * Generates a member map.
+	 *
+	 * @param array $atts
+	 *
+	 * @return str $output
+	 */
+	public function shortcode_asamp_member_map( $atts = array() ) {
+		$show = $this->options[ 'profiles_public' ];
+		if ( 'none' === $show && ! $this->is_member() ) return __( 'Please log in or register. Only members can see info about other members.', 'asamp' );
+
+		$prefix = 'asamp_user_';
+		$output = '';
+		$args = array(
+			'role__in'   => array_keys( $this->get_asamp_roles() ),
+			'meta_key'   => $prefix . 'member_status',
+			'meta_value' => 'active',
+		);
+		$user_query = new WP_User_Query( $args );
+		$users      = $user_query->get_results();
+
+		if ( empty( $users ) ) return __( 'No active members found.', 'asamp' );
+
+		foreach ( $users as $user ) {
+			$meta = $this->flatten_array( get_user_meta( $user->ID ) );
+			if ( empty( $meta[ $prefix . 'lat' ] ) || empty( $meta[ $prefix . 'lng' ] ) ) {
+				if ( ! empty( $meta[ $prefix . 'company_street' ] ) ) {
+					$meta = $this->geocode( $user->ID, $meta );
+				}
+			}
+			$output .= '<pre>' . print_r( $meta, true ) . '</pre>';
+		}
+
+		return $output;
+	}
+
+	/**
+	 * Geocodes an address.
+	 *
+	 * @param int   $user_id
+	 * @param array $user_meta
+	 *
+	 * @return array $user_meta
+	 */
+	private function geocode( $user_id, $user_meta ) {
+		$prefix  = 'asamp_user_';
+
+		if ( 5 < $user_meta[ $prefix . 'geocode_fail_count' ] || 60 * 60 * 25 > strtotime( date( 'Y-m-d' ) ) - strtotime( $user_meta[ $prefix . 'geocode_fail_date' ] ) ) {
+			return $user_meta;
+		}
+
+		$url  = 'http://maps.google.com/maps/api/geocode/json?address=';
+		$url .=        $user_meta[ $prefix . 'company_street' ];
+		$url .= ' '  . $user_meta[ $prefix . 'company_city'   ];
+		$url .= ', ' . $user_meta[ $prefix . 'company_state'  ];
+		$url .= '  ' . $user_meta[ $prefix . 'company_zip'    ];
+
+		$request = wp_remote_get( $url );
+		$response = wp_remote_retrieve_body( $request );
+
+		if ( 200 !== wp_remote_retrieve_response_code( $response ) ) return $user_meta;
+
+		$response = json_decode( $response, true );
+
+		if ( 'ZERO_RESULTS' === $response[ 'status' ] ) {
+			update_user_meta( $user_id, $prefix . 'geocode_fail_date',  date( 'Y-m-d' ) );
+			update_user_meta( $user_id, $prefix . 'geocode_fail_count', $user_meta[ $prefix . 'geocode_fail_count' ] + 1 );
+			return $user_meta;
+		}
+
+		if ( 'OK' === $response[ 'status' ] ) {
+			$lat = $response[ 'results' ][ 0 ][ 'geometry' ][ 'location' ][ 'lat' ];
+			update_user_meta( $user_id, $prefix . 'lat', $lat );
+			$user_meta[ $prefix . 'lat' ] = $lat;
+
+			$lng = $response[ 'results' ][ 0 ][ 'geometry' ][ 'location' ][ 'lng' ];
+			update_user_meta( $user_id, $prefix . 'lng', $lng );
+			$user_meta[ $prefix . 'lng' ] = $lng;
+		}
+
+		return $user_meta;
+	}
+
+	/**
+	 * Updates some user meta fields anytime user profile is updated.
+	 *
+	 * @param int $user_id
+	 * @param array $old_user_data
+	 *
+	 * @return void
+	 */
+	public function profile_update( $user_id ) {
+		$prefix = 'asamp_user_';
+		update_user_meta( $user_id, $prefix . 'lat',                '' );
+		update_user_meta( $user_id, $prefix . 'lng',                '' );
+		update_user_meta( $user_id, $prefix . 'geocode_fail_date',  '' );
+		update_user_meta( $user_id, $prefix . 'geocode_fail_count', '' );
 	}
 
 	/**
@@ -1258,6 +1362,8 @@ class ASA_Member_Portal {
 		$cmb->save_fields( $user_id, 'user', $sanitized_values );
 
 		$img_id = $this->frontend_image_upload( $prefix . 'company_logo' );
+
+		$this->profile_update( $user_id );
 
 		wp_redirect( esc_url_raw( $dest ) );
 		exit();
@@ -2581,7 +2687,6 @@ class ASA_Member_Portal {
 				'name'            => __( 'ASA Membership Status', 'asamp' ),
 				'id'              => $prefix . 'member_status',
 				'type'            => 'radio_inline',
-				//'on_front'        => false,
 				'default'         => 'inactive',
 				'options'         => array(
 					'active'   => __( 'Active',   'asamp' ),
@@ -2593,7 +2698,6 @@ class ASA_Member_Portal {
 				'name'            => __( 'ASA Membership Join Date', 'asamp' ),
 				'id'              => $prefix . 'member_date_joined',
 				'type'            => 'text_date',
-				//'on_front'        => false,
 				'default'         => date( 'Y-m-d' ),
 				'date_format'     => 'Y-m-d',
 			) );
@@ -2602,7 +2706,6 @@ class ASA_Member_Portal {
 				'name'            => __( 'ASA Membership Expiration Date', 'asamp' ),
 				'id'              => $prefix . 'member_expiry',
 				'type'            => 'text_date',
-				//'on_front'        => false,
 				'default'         => date( 'Y-m-d' ),
 				'date_format'     => 'Y-m-d',
 			) );
@@ -2663,6 +2766,18 @@ class ASA_Member_Portal {
 			'name'            => __( 'Zip', 'asamp' ),
 			'id'              => $prefix . 'company_zip',
 			'type'            => 'text',
+		) );
+
+		$cmb_user->add_field( array(
+			'name'            => __( 'Latitude', 'asamp' ),
+			'id'              => $prefix . 'lat',
+			'type'            => 'hidden',
+		) );
+
+		$cmb_user->add_field( array(
+			'name'            => __( 'Longitude', 'asamp' ),
+			'id'              => $prefix . 'lng',
+			'type'            => 'hidden',
 		) );
 
 		$cmb_user->add_field( array(
@@ -2924,6 +3039,10 @@ class ASA_Member_Portal {
 					<dt>[asamp_member_profile]</dt>
 					<dd>
 						Renders a form for non-members to register. Members use this form to update their profile.
+					</dd>
+					<dt>[asamp_member_map]</dt>
+					<dd>
+						Renders a google map with a pin for each member's address.
 					</dd>
 					<dt>[asamp_member_login_box hide="true" link="Text"]</dt>
 					<dd>
