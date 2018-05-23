@@ -680,6 +680,7 @@ class ASA_Member_Portal {
 
 		if ( empty( $users ) ) return __( 'No active members found.', 'asamp' );
 
+		$locations = array();
 		foreach ( $users as $user ) {
 			$meta = $this->flatten_array( get_user_meta( $user->ID ) );
 			if ( empty( $meta[ $prefix . 'lat' ] ) || empty( $meta[ $prefix . 'lng' ] ) ) {
@@ -687,8 +688,51 @@ class ASA_Member_Portal {
 					$meta = $this->geocode( $user->ID, $meta );
 				}
 			}
-			$output .= '<pre>' . print_r( $meta, true ) . '</pre>';
+
+			if ( empty( $meta[ $prefix . 'lat' ] ) || empty( $meta[ $prefix . 'lng' ] ) ) continue;
+
+			$locations[] = array(
+				'<h3>' . $meta[ $prefix . 'company_name' ] . '</h3><address>' . $meta[ $prefix . 'company_street' ] . ' <br />' . $meta[ $prefix . 'company_city' ] . ', ' . $meta[ $prefix . 'company_state' ] . '  ' . $meta[ $prefix . 'company_zip' ] . '</address>',
+				$meta[ $prefix . 'lat' ],
+				$meta[ $prefix . 'lng' ],
+			);
 		}
+
+		if ( empty( $locations ) ) return __( 'No valid map locations found.', 'asamp' );
+
+		ob_start();
+		?>
+			<div id="asamp-member-map" style="width: 100%; height: 600px; margin-bottom: 1em;"></div>
+			<script>
+			function initMap() {
+				var map = new google.maps.Map(document.getElementById('asamp-member-map'), {
+					zoom: 5,
+					center: new google.maps.LatLng(39.32098,-111.093731),
+					mapTypeId: google.maps.MapTypeId.ROADMAP
+				});
+				
+				var locations = <?php echo json_encode( $locations ); ?>;
+				var infowindow = new google.maps.InfoWindow();
+				var marker, i;
+
+				for(i = 0; i < locations.length; i++){
+					marker = new google.maps.Marker({
+						position: new google.maps.LatLng(locations[i][1], locations[i][2]),
+						map: map,
+					});
+
+					google.maps.event.addListener(marker, 'click', (function(marker, i){
+						return function(){
+							infowindow.setContent(locations[i][0]);
+							infowindow.open(map, marker);
+						}
+					})(marker, i));
+				}
+			}
+			</script>
+			<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCkoyda18nrKjguaCbwUjtmdGXMnMsQE8&callback=initMap"></script>
+		<?php
+		$output = ob_get_clean();
 
 		return $output;
 	}
@@ -704,9 +748,7 @@ class ASA_Member_Portal {
 	private function geocode( $user_id, $user_meta ) {
 		$prefix  = 'asamp_user_';
 
-		if ( 5 < $user_meta[ $prefix . 'geocode_fail_count' ] || 60 * 60 * 25 > strtotime( date( 'Y-m-d' ) ) - strtotime( $user_meta[ $prefix . 'geocode_fail_date' ] ) ) {
-			return $user_meta;
-		}
+		if ( 3 < $user_meta[ $prefix . 'geocode_fail_count' ] || 60 * 60 * 25 > time() - $user_meta[ $prefix . 'geocode_fail_time' ] ) return $user_meta;
 
 		$url  = 'http://maps.google.com/maps/api/geocode/json?address=';
 		$url .=        $user_meta[ $prefix . 'company_street' ];
@@ -714,7 +756,7 @@ class ASA_Member_Portal {
 		$url .= ', ' . $user_meta[ $prefix . 'company_state'  ];
 		$url .= '  ' . $user_meta[ $prefix . 'company_zip'    ];
 
-		$request = wp_remote_get( $url );
+		$request  = wp_remote_get( $url );
 		$response = wp_remote_retrieve_body( $request );
 
 		if ( 200 !== wp_remote_retrieve_response_code( $response ) ) return $user_meta;
@@ -722,12 +764,14 @@ class ASA_Member_Portal {
 		$response = json_decode( $response, true );
 
 		if ( 'ZERO_RESULTS' === $response[ 'status' ] ) {
-			update_user_meta( $user_id, $prefix . 'geocode_fail_date',  date( 'Y-m-d' ) );
+			update_user_meta( $user_id, $prefix . 'geocode_fail_time', time() );
 			update_user_meta( $user_id, $prefix . 'geocode_fail_count', $user_meta[ $prefix . 'geocode_fail_count' ] + 1 );
 			return $user_meta;
 		}
 
 		if ( 'OK' === $response[ 'status' ] ) {
+			$this->profile_update( $user_id );
+
 			$lat = $response[ 'results' ][ 0 ][ 'geometry' ][ 'location' ][ 'lat' ];
 			update_user_meta( $user_id, $prefix . 'lat', $lat );
 			$user_meta[ $prefix . 'lat' ] = $lat;
@@ -752,7 +796,7 @@ class ASA_Member_Portal {
 		$prefix = 'asamp_user_';
 		update_user_meta( $user_id, $prefix . 'lat',                '' );
 		update_user_meta( $user_id, $prefix . 'lng',                '' );
-		update_user_meta( $user_id, $prefix . 'geocode_fail_date',  '' );
+		update_user_meta( $user_id, $prefix . 'geocode_fail_time',  '' );
 		update_user_meta( $user_id, $prefix . 'geocode_fail_count', '' );
 	}
 
@@ -1363,7 +1407,7 @@ class ASA_Member_Portal {
 
 		$img_id = $this->frontend_image_upload( $prefix . 'company_logo' );
 
-		$this->profile_update( $user_id );
+		//$this->profile_update( $user_id );
 
 		wp_redirect( esc_url_raw( $dest ) );
 		exit();
