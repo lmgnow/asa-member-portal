@@ -86,7 +86,8 @@ class ASA_Member_Portal {
 		add_action( 'admin_init', array( $this, 'get_this_plugin_data' ) );
 		add_action( 'admin_init', array( $this, 'export_members'       ) );
 
-		add_action( 'admin_footer', array( $this, 'add_export_members_link' ) );
+		add_action( 'admin_notices', array( $this, 'admin_notices'           ) );
+		add_action( 'admin_footer',  array( $this, 'add_export_members_link' ) );
 
 		add_filter( 'plugin_action_links_' . plugin_basename( $this->plugin_file_path ), array( $this, 'add_settings_link' ), 10, 1 );
 
@@ -174,6 +175,17 @@ class ASA_Member_Portal {
 			$pp = ! empty( $this->options[ 'page_profile' ] ) ? get_the_permalink( $this->options[ 'page_profile' ] ) : home_url();
 			wp_redirect( $pp );
 			exit();
+		}
+	}
+
+	/**
+	 * Outputs notices to admin screens.
+	 *
+	 * @return void
+	 */
+	public function admin_notices() {
+		if ( $bad_address = get_option( 'asamp_bad_address_notice' ) ) {
+			?><div id="asamp-bad-address" class="error notice"><p>One of your members has a bad address. Google does not recognize it. It may be an invalid/non-existant address, or it may just be poorly formatted. <a href="<?php echo admin_url( 'user-edit.php?user_id=' . $bad_address );; ?>">Review Member Profile</a>.</p></div><?php
 		}
 	}
 
@@ -700,14 +712,18 @@ class ASA_Member_Portal {
 
 		if ( empty( $locations ) ) return __( 'No valid map locations found.', 'asamp' );
 
+		$lat_start  = ! empty( $this->options[ 'google_maps_center_lat' ] )   ? $this->options[ 'google_maps_center_lat' ]   : '37.09024';
+		$lng_start  = ! empty( $this->options[ 'google_maps_center_lng' ] )   ? $this->options[ 'google_maps_center_lng' ]   : '-95.712891';
+		$zoom_start = ! empty( $this->options[ 'google_maps_default_zoom' ] ) ? $this->options[ 'google_maps_default_zoom' ] : '4';
+
 		ob_start();
 		?>
 			<div id="asamp-member-map" style="width: 100%; height: 600px; margin-bottom: 1em;"></div>
 			<script>
 			function initMap() {
 				var map = new google.maps.Map(document.getElementById('asamp-member-map'), {
-					zoom: 5,
-					center: new google.maps.LatLng(39.32098,-111.093731),
+					zoom: <?php echo $zoom_start; ?>,
+					center: new google.maps.LatLng(<?php echo $lat_start; ?>,<?php echo $lng_start; ?>),
 					mapTypeId: google.maps.MapTypeId.ROADMAP
 				});
 				
@@ -730,7 +746,7 @@ class ASA_Member_Portal {
 				}
 			}
 			</script>
-			<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCkoyda18nrKjguaCbwUjtmdGXMnMsQE8&callback=initMap"></script>
+			<script async defer src="https://maps.googleapis.com/maps/api/js?key=<?php echo $this->options[ 'google_maps_api_key' ]; ?>&callback=initMap"></script>
 		<?php
 		$output = ob_get_clean();
 
@@ -748,20 +764,31 @@ class ASA_Member_Portal {
 	private function geocode( $user_id, $user_meta ) {
 		$prefix  = 'asamp_user_';
 
-		if ( 3 < $user_meta[ $prefix . 'geocode_fail_count' ] || 60 * 60 * 25 > time() - $user_meta[ $prefix . 'geocode_fail_time' ] ) return $user_meta;
+		$geocode_api_interval = 60 * 60 * 1;
+		if ( $geocode_api_interval > time() - get_option( 'asamp_geocode_api_limit_reached' ) ) return $user_meta;
+		if ( $geocode_api_interval > time() - $user_meta[ $prefix . 'geocode_fail_time' ]     ) return $user_meta;
+		if ( 3 < $user_meta[ $prefix . 'geocode_fail_count' ] ) {
+			update_option( 'asamp_bad_address_notice', $user_id );
+			return $user_meta;
+		}
 
 		$url  = 'http://maps.google.com/maps/api/geocode/json?address=';
 		$url .=        $user_meta[ $prefix . 'company_street' ];
-		$url .= ' '  . $user_meta[ $prefix . 'company_city'   ];
+		$url .= ', ' . $user_meta[ $prefix . 'company_city'   ];
 		$url .= ', ' . $user_meta[ $prefix . 'company_state'  ];
 		$url .= '  ' . $user_meta[ $prefix . 'company_zip'    ];
 
 		$request  = wp_remote_get( $url );
 		$response = wp_remote_retrieve_body( $request );
 
-		if ( 200 !== wp_remote_retrieve_response_code( $response ) ) return $user_meta;
+		if ( 200 !== wp_remote_retrieve_response_code( $request ) ) return $user_meta;
 
 		$response = json_decode( $response, true );
+
+		if ( 'OVER_QUERY_LIMIT' === $response[ 'status' ] ) {
+			update_option( 'asamp_geocode_api_limit_reached', time() );
+			return $user_meta;
+		}
 
 		if ( 'ZERO_RESULTS' === $response[ 'status' ] ) {
 			update_user_meta( $user_id, $prefix . 'geocode_fail_time', time() );
@@ -798,6 +825,8 @@ class ASA_Member_Portal {
 		update_user_meta( $user_id, $prefix . 'lng',                '' );
 		update_user_meta( $user_id, $prefix . 'geocode_fail_time',  '' );
 		update_user_meta( $user_id, $prefix . 'geocode_fail_count', '' );
+
+		if ( get_option( 'asamp_bad_address_notice' ) == $user_id ) update_option( 'asamp_bad_address_notice', '' );
 	}
 
 	/**
@@ -1929,6 +1958,7 @@ class ASA_Member_Portal {
 				'boxes' => array(
 					'registration',
 					'directory',
+					'map',
 					'pages',
 					'administration',
 				),
@@ -2496,6 +2526,44 @@ class ASA_Member_Portal {
 			'options' => array(
 				'yes' => __( 'Yes', 'asamp' ),
 				'no'  => __( 'No',  'asamp' ),
+			),
+		) );
+		$cmb->object_type( 'options-page' );
+		$boxes[] = $cmb;
+		
+		$cmb = new_cmb2_box( array(
+			'id'              => 'map',
+			'title'           => __( 'Member Map', 'asamp' ),
+			'show_on'         => $show_on,
+			'display_cb'      => false,
+			'admin_menu_hook' => false,
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'Google Maps API Key', 'asamp' ),
+			'id'              => 'google_maps_api_key',
+			'type'            => 'text',
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'Latitude', 'asamp' ),
+			'id'              => 'google_maps_center_lat',
+			'type'            => 'text',
+			'default'         => '37.09024',
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'Longitude', 'asamp' ),
+			'id'              => 'google_maps_center_lng',
+			'type'            => 'text',
+			'default'         => '-95.712891',
+		) );
+		$cmb->add_field( array(
+			'name'            => __( 'Zoom', 'asamp' ),
+			'id'              => 'google_maps_default_zoom',
+			'type'            => 'text',
+			'default'         => 4,
+			'attributes'      => array(
+				'type'    => 'number',
+				'min'     => 1,
+				'max'     => 21,
 			),
 		) );
 		$cmb->object_type( 'options-page' );
