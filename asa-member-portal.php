@@ -21,17 +21,20 @@ use League\Csv\Writer;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $version          = '1.1.7'; // str             Current version.
-	private $plugin_file_path = '';      // str             Absolute path to this file.      (with trailing slash)
-	private $plugin_dir_path  = '';      // str             Absolute path to this directory. (with trailing slash)
-	private $plugin_dir_url   = '';      // str             URL of this directory.           (with trailing slash)
-	private $plugin_data      = array(); // array
-	private $options          = array(); // array           CMB2 options for this plugin.
-	private $user             = null;    // WP_User  object Current logged in user.
-	private $user_meta        = null;    // stdClass object Current logged in user's user_meta data.
-	private $is_member        = false;   // bool            true if $this->user is a member.
-	private $fieldset_open    = false;   // bool            true if fieldset is already open.
-	private $notices          = null;    // object          Used to store notices.
+	private $version          = '1.1.7';      // str             Current version.
+	private $td               = 'asamp';      // str             Text Domain.
+	private $pu               = '_user_';     // str             Prefix for user meta fields.
+	private $view             = 'non-member'; // str             Prefix for user meta fields.
+	private $plugin_file_path = '';           // str             Absolute path to this file.      (with trailing slash)
+	private $plugin_dir_path  = '';           // str             Absolute path to this directory. (with trailing slash)
+	private $plugin_dir_url   = '';           // str             URL of this directory.           (with trailing slash)
+	private $plugin_data      = array();      // array
+	private $options          = array();      // array           CMB2 options for this plugin.
+	private $user             = null;         // WP_User  object Current logged in user.
+	private $user_meta        = null;         // stdClass object Current logged in user's user_meta data.
+	private $is_member        = false;        // bool            true if $this->user is a member.
+	private $fieldset_open    = false;        // bool            true if fieldset is already open.
+	private $notices          = null;         // object          Used to store notices.
 
 	/**
 	 * Constructs object.
@@ -42,6 +45,7 @@ class ASA_Member_Portal {
 		$this->plugin_file_path = __FILE__;
 		$this->plugin_dir_path  = plugin_dir_path( $this->plugin_file_path );
 		$this->plugin_dir_url   = plugin_dir_url(  $this->plugin_file_path );
+		$this->pu               = $this->td . $this->pu;
 		$this->notices          = new ASAMP_One_Time_Notices();
 
 		require_once $this->plugin_dir_path . 'includes/vendor/autoload.php';
@@ -296,6 +300,15 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Returns an associative array of the roles created by this plugin with price.
+	 *
+	 * @return array $roles
+	 */
+	private function get_asamp_roles_select_with_price() {
+		return $this->get_asamp_roles_select( true );
+	}
+
+	/**
 	 * Returns an associative array of the user accounts created by this plugin.
 	 * Includes id and label. To be used in a select field on the frontend.
 	 *
@@ -355,7 +368,7 @@ class ASA_Member_Portal {
 	 * @return string $output
 	 */
 	public function shortcode_asamp_member_profile( $atts = array() ) {
-		$form_id = 'asamp_user_edit';
+		$form_id = $this->pu;
 		$cmb = cmb2_get_metabox( $form_id, $this->user()->ID );
 
 		$output = '';
@@ -680,11 +693,10 @@ class ASA_Member_Portal {
 		$show = $this->options[ 'profiles_public' ];
 		if ( 'none' === $show && ! $this->is_member() ) return __( 'Please log in or register. Only members can see info about other members.', 'asamp' );
 
-		$prefix = 'asamp_user_';
 		$output = '';
 		$args = array(
 			'role__in'   => array_keys( $this->get_asamp_roles() ),
-			'meta_key'   => $prefix . 'member_status',
+			'meta_key'   => $this->pu . 'member_status',
 			'meta_value' => 'active',
 		);
 		$user_query = new WP_User_Query( $args );
@@ -695,18 +707,18 @@ class ASA_Member_Portal {
 		$locations = array();
 		foreach ( $users as $user ) {
 			$meta = $this->flatten_array( get_user_meta( $user->ID ) );
-			if ( empty( $meta[ $prefix . 'lat' ] ) || empty( $meta[ $prefix . 'lng' ] ) ) {
-				if ( ! empty( $meta[ $prefix . 'company_street' ] ) ) {
+			if ( empty( $meta[ $this->pu . 'lat' ] ) || empty( $meta[ $this->pu . 'lng' ] ) ) {
+				if ( ! empty( $meta[ $this->pu . 'company_street' ] ) ) {
 					$meta = $this->geocode( $user->ID, $meta );
 				}
 			}
 
-			if ( empty( $meta[ $prefix . 'lat' ] ) || empty( $meta[ $prefix . 'lng' ] ) ) continue;
+			if ( empty( $meta[ $this->pu . 'lat' ] ) || empty( $meta[ $this->pu . 'lng' ] ) ) continue;
 
 			$locations[] = array(
-				'<h3>' . $meta[ $prefix . 'company_name' ] . '</h3><address>' . $meta[ $prefix . 'company_street' ] . ' <br />' . $meta[ $prefix . 'company_city' ] . ', ' . $meta[ $prefix . 'company_state' ] . '  ' . $meta[ $prefix . 'company_zip' ] . '</address>',
-				$meta[ $prefix . 'lat' ],
-				$meta[ $prefix . 'lng' ],
+				'<h3>' . $meta[ $this->pu . 'company_name' ] . '</h3><address>' . $meta[ $this->pu . 'company_street' ] . ' <br />' . $meta[ $this->pu . 'company_city' ] . ', ' . $meta[ $this->pu . 'company_state' ] . '  ' . $meta[ $this->pu . 'company_zip' ] . '</address>',
+				$meta[ $this->pu . 'lat' ],
+				$meta[ $this->pu . 'lng' ],
 			);
 		}
 
@@ -762,21 +774,19 @@ class ASA_Member_Portal {
 	 * @return array $user_meta
 	 */
 	private function geocode( $user_id, $user_meta ) {
-		$prefix  = 'asamp_user_';
-
 		$geocode_api_interval = 60 * 60 * 1;
 		if ( $geocode_api_interval > time() - get_option( 'asamp_geocode_api_limit_reached' ) ) return $user_meta;
-		if ( $geocode_api_interval > time() - $user_meta[ $prefix . 'geocode_fail_time' ]     ) return $user_meta;
-		if ( 3 < $user_meta[ $prefix . 'geocode_fail_count' ] ) {
+		if ( $geocode_api_interval > time() - $user_meta[ $this->pu . 'geocode_fail_time' ]     ) return $user_meta;
+		if ( 3 < $user_meta[ $this->pu . 'geocode_fail_count' ] ) {
 			update_option( 'asamp_bad_address_notice', $user_id );
 			return $user_meta;
 		}
 
 		$url  = 'http://maps.google.com/maps/api/geocode/json?address=';
-		$url .=        $user_meta[ $prefix . 'company_street' ];
-		$url .= ', ' . $user_meta[ $prefix . 'company_city'   ];
-		$url .= ', ' . $user_meta[ $prefix . 'company_state'  ];
-		$url .= '  ' . $user_meta[ $prefix . 'company_zip'    ];
+		$url .=        $user_meta[ $this->pu . 'company_street' ];
+		$url .= ', ' . $user_meta[ $this->pu . 'company_city'   ];
+		$url .= ', ' . $user_meta[ $this->pu . 'company_state'  ];
+		$url .= '  ' . $user_meta[ $this->pu . 'company_zip'    ];
 
 		$request  = wp_remote_get( $url );
 		$response = wp_remote_retrieve_body( $request );
@@ -791,8 +801,8 @@ class ASA_Member_Portal {
 		}
 
 		if ( 'ZERO_RESULTS' === $response[ 'status' ] ) {
-			update_user_meta( $user_id, $prefix . 'geocode_fail_time', time() );
-			update_user_meta( $user_id, $prefix . 'geocode_fail_count', $user_meta[ $prefix . 'geocode_fail_count' ] + 1 );
+			update_user_meta( $user_id, $this->pu . 'geocode_fail_time', time() );
+			update_user_meta( $user_id, $this->pu . 'geocode_fail_count', $user_meta[ $this->pu . 'geocode_fail_count' ] + 1 );
 			return $user_meta;
 		}
 
@@ -800,12 +810,12 @@ class ASA_Member_Portal {
 			$this->profile_update( $user_id );
 
 			$lat = $response[ 'results' ][ 0 ][ 'geometry' ][ 'location' ][ 'lat' ];
-			update_user_meta( $user_id, $prefix . 'lat', $lat );
-			$user_meta[ $prefix . 'lat' ] = $lat;
+			update_user_meta( $user_id, $this->pu . 'lat', $lat );
+			$user_meta[ $this->pu . 'lat' ] = $lat;
 
 			$lng = $response[ 'results' ][ 0 ][ 'geometry' ][ 'location' ][ 'lng' ];
-			update_user_meta( $user_id, $prefix . 'lng', $lng );
-			$user_meta[ $prefix . 'lng' ] = $lng;
+			update_user_meta( $user_id, $this->pu . 'lng', $lng );
+			$user_meta[ $this->pu . 'lng' ] = $lng;
 		}
 
 		return $user_meta;
@@ -820,11 +830,10 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function profile_update( $user_id ) {
-		$prefix = 'asamp_user_';
-		update_user_meta( $user_id, $prefix . 'lat',                '' );
-		update_user_meta( $user_id, $prefix . 'lng',                '' );
-		update_user_meta( $user_id, $prefix . 'geocode_fail_time',  '' );
-		update_user_meta( $user_id, $prefix . 'geocode_fail_count', '' );
+		update_user_meta( $user_id, $this->pu . 'lat',                '' );
+		update_user_meta( $user_id, $this->pu . 'lng',                '' );
+		update_user_meta( $user_id, $this->pu . 'geocode_fail_time',  '' );
+		update_user_meta( $user_id, $this->pu . 'geocode_fail_count', '' );
 
 		if ( get_option( 'asamp_bad_address_notice' ) == $user_id ) update_option( 'asamp_bad_address_notice', '' );
 	}
@@ -943,7 +952,7 @@ class ASA_Member_Portal {
 	 * @return array $r
 	 */
 	public function get_us_states_array( $default = null ) {
-		$r = array( 'AL' => 'Alabama', 'AK' => 'Alaska', 'AS' => 'American Samoa', 'AZ' => 'Arizona', 'AR' => 'Arkansas', 'CA' => 'California', 'CO' => 'Colorado', 'CT' => 'Connecticut', 'DE' => 'Delaware', 'DC' => 'District of Columbia', 'FL' => 'Florida', 'GA' => 'Georgia', 'HI' => 'Hawaii', 'ID' => 'Idaho', 'IL' => 'Illinois', 'IN' => 'Indiana', 'IA' => 'Iowa', 'KS' => 'Kansas', 'KY' => 'Kentucky', 'LA' => 'Louisiana', 'ME' => 'Maine', 'MD' => 'Maryland', 'MA' => 'Massachusets', 'MI' => 'Michigan', 'MN' => 'Minnesota', 'MS' => 'Mississippi', 'MO' => 'Missouri', 'MT' => 'Montana', 'NE' => 'Nebraska', 'NV' => 'Nevada', 'NH' => 'New Hampshire', 'NJ' => 'New Jersey', 'NM' => 'New Mexico', 'NY' => 'New York', 'NC' => 'North Carolina', 'ND' => 'North Dakota', 'OH' => 'Ohio', 'OK' => 'Oklahoma', 'OR' => 'Oregon', 'PA' => 'Pennsylvania', 'PR' => 'Puerto Rico', 'RI' => 'Rhode Island', 'SC' => 'South Carolina', 'SD' => 'South Dakota', 'TN' => 'Tennessee', 'TX' => 'Texas', 'UT' => 'Utah', 'VT' => 'Vermont', 'VA' => 'Virginia', 'WA' => 'Washington', 'WV' => 'West Vitginia', 'WI' => 'Wisconsin', 'WY' => 'Wyoming' );
+		$r = array( '' => 'Choose&hellip;', 'AL' => 'Alabama', 'AK' => 'Alaska', 'AS' => 'American Samoa', 'AZ' => 'Arizona', 'AR' => 'Arkansas', 'CA' => 'California', 'CO' => 'Colorado', 'CT' => 'Connecticut', 'DE' => 'Delaware', 'DC' => 'District of Columbia', 'FL' => 'Florida', 'GA' => 'Georgia', 'HI' => 'Hawaii', 'ID' => 'Idaho', 'IL' => 'Illinois', 'IN' => 'Indiana', 'IA' => 'Iowa', 'KS' => 'Kansas', 'KY' => 'Kentucky', 'LA' => 'Louisiana', 'ME' => 'Maine', 'MD' => 'Maryland', 'MA' => 'Massachusets', 'MI' => 'Michigan', 'MN' => 'Minnesota', 'MS' => 'Mississippi', 'MO' => 'Missouri', 'MT' => 'Montana', 'NE' => 'Nebraska', 'NV' => 'Nevada', 'NH' => 'New Hampshire', 'NJ' => 'New Jersey', 'NM' => 'New Mexico', 'NY' => 'New York', 'NC' => 'North Carolina', 'ND' => 'North Dakota', 'OH' => 'Ohio', 'OK' => 'Oklahoma', 'OR' => 'Oregon', 'PA' => 'Pennsylvania', 'PR' => 'Puerto Rico', 'RI' => 'Rhode Island', 'SC' => 'South Carolina', 'SD' => 'South Dakota', 'TN' => 'Tennessee', 'TX' => 'Texas', 'UT' => 'Utah', 'VT' => 'Vermont', 'VA' => 'Virginia', 'WA' => 'Washington', 'WV' => 'West Vitginia', 'WI' => 'Wisconsin', 'WY' => 'Wyoming' );
 		if ( isset( $default ) && array_key_exists( $default, $r ) ) {
 			$r = array( $default => $r[ $default ] ) + $r;
 		}
@@ -993,6 +1002,15 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Returns an associative array of year numbers.
+	 *
+	 * @return array $r
+	 */
+	public function get_year_founded_array() {
+		return $this->get_years_array( date( 'Y', strtotime( date( 'Y' ) . ' -100 years' ) ) );
+	}
+
+	/**
 	 * Returns an associative array of pages or posts.
 	 *
 	 * @param str $post_type
@@ -1033,6 +1051,27 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Returns an associative array of trades / buisiness types.
+	 *
+	 * @return array
+	 */
+	public function get_trades_array() {
+		$trades = array();
+		if ( ! empty( $this->options[ 'trades' ] ) ) {
+			$trades = explode( "\r\n", $this->options[ 'trades' ] );
+		} else {
+			$trades = $this->get_default_trades_array();
+		}
+
+		$r = array();
+		foreach ( $trades as $v ) {
+			$r[ esc_attr__( $v ) ] = $v;
+		}
+
+		return $r;
+	}
+
+	/**
 	 * Returns the default member type label.
 	 *
 	 * @return string
@@ -1069,6 +1108,26 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * Returns the default value for the default state option.
+	 *
+	 * @return str
+	 */
+	public function get_default_state_default() {
+		return '';
+	}
+
+	/**
+	 * Returns the user defined value of an option or its default value.
+	 *
+	 * @param str $option
+	 *
+	 * @return mixed
+	 */
+	private function get_option( $option ) {
+		return ! empty( $this->options[ $option ] ) ? $this->options[ $option ] : call_user_func( array( $this, 'get_default_' . $option ) );
+	}
+
+	/**
 	 * Checks which form is being handled.
 	 *
 	 * @param string $key
@@ -1076,6 +1135,7 @@ class ASA_Member_Portal {
 	 * @return bool
 	 */
 	private function verify_cmb_form( $key ) {
+		$key = $key . 'nonce';
 		if ( empty( $_POST ) )                                          return false;
 		if ( ! isset( $_POST[ 'submit-cmb' ], $_POST[ 'object_id' ] ) ) return false;
 		if ( ! wp_verify_nonce( $_POST[ $key ], $key ) )                return false;
@@ -1102,7 +1162,7 @@ class ASA_Member_Portal {
 	 */
 	public function frontend_dues_payment() {
 		$prefix = 'asamp_payment_';
-		if ( ! $this->verify_cmb_form( $prefix . 'nonce' ) ) return false;
+		if ( ! $this->verify_cmb_form( $prefix ) ) return false;
 
 		$cmb = cmb2_get_metabox( $prefix . 'form' );
 
@@ -1312,7 +1372,7 @@ class ASA_Member_Portal {
 	 */
 	public function frontend_user_login() {
 		$prefix = 'asamp_login_';
-		if ( ! $this->verify_cmb_form( $prefix . 'nonce' ) ) return false;
+		if ( ! $this->verify_cmb_form( $prefix ) ) return false;
 
 		$cmb = cmb2_get_metabox( $prefix . 'form' );
 
@@ -1342,10 +1402,9 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function frontend_user_profile() {
-		$prefix = 'asamp_user_';
-		if ( ! $this->verify_cmb_form( $prefix . 'nonce' ) ) return false;
-		
-		$cmb = cmb2_get_metabox( $prefix . 'edit', $this->user()->ID );
+		if ( ! $this->verify_cmb_form( $this->pu ) ) return false;
+
+		$cmb = cmb2_get_metabox( $this->pu, $this->user()->ID );
 
 		if ( ! isset( $_POST[ $cmb->nonce() ] ) || ! wp_verify_nonce( $_POST[ $cmb->nonce() ], $cmb->nonce() ) ) {
 			return $cmb->prop( 'submission_error', new WP_Error( 'security_fail', __( 'Security check failed.', 'asamp' ) ) );
@@ -1353,7 +1412,7 @@ class ASA_Member_Portal {
 
 		$sanitized_values = $cmb->get_sanitized_values( $_POST );
 
-		if ( $validation_errors = $this->validate_user_profile( $sanitized_values, $_POST, $prefix ) ) {
+		if ( $validation_errors = $this->validate_user_profile( $sanitized_values, $_POST, $this->pu ) ) {
 			$cmb->prop( 'submission_error', new WP_Error( 'validation_fail', __( 'Please correct the errors below.', 'asamp' ) ) );
 			$cmb->prop( 'validation_errors', $validation_errors );
 			return $cmb;
@@ -1383,39 +1442,39 @@ class ASA_Member_Portal {
 		$dest = add_query_arg( 'member_updated', 'true' );
 
 		if ( $this->is_member() ) {
-			$this->user()->user_pass     = ! empty( $sanitized_values[ $prefix . 'pass' ] )                ? $sanitized_values[ $prefix . 'pass' ]                : $this->user()->user_pass;
-			$this->user()->user_nicename = ! empty( $sanitized_values[ $prefix . 'company_name' ] )        ? $sanitized_values[ $prefix . 'company_name' ]        : $this->user()->user_nicename;
-			$this->user()->user_url      = ! empty( $sanitized_values[ $prefix . 'company_website' ] )     ? $sanitized_values[ $prefix . 'company_website' ]     : '';
-			$this->user()->user_email    = ! empty( $sanitized_values[ $prefix . 'company_email' ] )       ? $sanitized_values[ $prefix . 'company_email' ]       : $this->user()->user_email;
-			$this->user()->display_name  = ! empty( $sanitized_values[ $prefix . 'company_name' ] )        ? $sanitized_values[ $prefix . 'company_name' ]        : $this->user()->display_name;
-			$this->user()->description   = ! empty( $sanitized_values[ $prefix . 'company_description' ] ) ? $sanitized_values[ $prefix . 'company_description' ] : '';
+			$this->user()->user_pass     = ! empty( $sanitized_values[ $this->pu . 'pass' ] )                ? $sanitized_values[ $this->pu . 'pass' ]                : $this->user()->user_pass;
+			$this->user()->user_nicename = ! empty( $sanitized_values[ $this->pu . 'company_name' ] )        ? $sanitized_values[ $this->pu . 'company_name' ]        : $this->user()->user_nicename;
+			$this->user()->user_url      = ! empty( $sanitized_values[ $this->pu . 'company_website' ] )     ? $sanitized_values[ $this->pu . 'company_website' ]     : '';
+			$this->user()->user_email    = ! empty( $sanitized_values[ $this->pu . 'company_email' ] )       ? $sanitized_values[ $this->pu . 'company_email' ]       : $this->user()->user_email;
+			$this->user()->display_name  = ! empty( $sanitized_values[ $this->pu . 'company_name' ] )        ? $sanitized_values[ $this->pu . 'company_name' ]        : $this->user()->display_name;
+			$this->user()->description   = ! empty( $sanitized_values[ $this->pu . 'company_description' ] ) ? $sanitized_values[ $this->pu . 'company_description' ] : '';
 
 			$user_id = wp_update_user( $this->user() );
 
-			update_user_meta( $user_id, 'first_name', $sanitized_values[ $prefix . 'company_name' ] );
-			update_user_meta( $user_id, 'nickname',   $sanitized_values[ $prefix . 'company_name' ] );
+			update_user_meta( $user_id, 'first_name', $sanitized_values[ $this->pu . 'company_name' ] );
+			update_user_meta( $user_id, 'nickname',   $sanitized_values[ $this->pu . 'company_name' ] );
 		} else {
 			$userdata = array(
-				'user_login'           => $sanitized_values[ $prefix . 'login' ],
-				'user_pass'            => $sanitized_values[ $prefix . 'pass' ],
-				'user_nicename'        => sanitize_html_class( $sanitized_values[ $prefix . 'company_name' ] ),
-				'user_url'             => $sanitized_values[ $prefix . 'company_website' ],
-				'user_email'           => $sanitized_values[ $prefix . 'company_email' ],
-				'display_name'         => $sanitized_values[ $prefix . 'company_name' ],
-				'description'          => $sanitized_values[ $prefix . 'company_description' ],
+				'user_login'           => $sanitized_values[ $this->pu . 'login' ],
+				'user_pass'            => $sanitized_values[ $this->pu . 'pass' ],
+				'user_nicename'        => sanitize_html_class( $sanitized_values[ $this->pu . 'company_name' ] ),
+				'user_url'             => $sanitized_values[ $this->pu . 'company_website' ],
+				'user_email'           => $sanitized_values[ $this->pu . 'company_email' ],
+				'display_name'         => $sanitized_values[ $this->pu . 'company_name' ],
+				'description'          => $sanitized_values[ $this->pu . 'company_description' ],
 				'rich_editing'         => false,
 				'syntax_highlighting'  => false,
 				'show_admin_bar_front' => false,
-				'role'                 => $sanitized_values[ $prefix . 'member_type' ],
+				'role'                 => $sanitized_values[ $this->pu . 'member_type' ],
 			);
 
 			$user_id = wp_insert_user( $userdata );
 
-			update_user_meta( $user_id, 'first_name',                   $sanitized_values[ $prefix . 'company_name' ] );
-			update_user_meta( $user_id, 'nickname',                     $sanitized_values[ $prefix . 'company_name' ] );
-			update_user_meta( $user_id, $prefix . 'member_date_joined', date( 'Y-m-d' ) );
-			update_user_meta( $user_id, $prefix . 'member_expiry',      date( 'Y-m-d' ) );
-			update_user_meta( $user_id, $prefix . 'member_status',     'inactive' );
+			update_user_meta( $user_id, 'first_name',                   $sanitized_values[ $this->pu . 'company_name' ] );
+			update_user_meta( $user_id, 'nickname',                     $sanitized_values[ $this->pu . 'company_name' ] );
+			update_user_meta( $user_id, $this->pu . 'member_date_joined', date( 'Y-m-d' ) );
+			update_user_meta( $user_id, $this->pu . 'member_expiry',      date( 'Y-m-d' ) );
+			update_user_meta( $user_id, $this->pu . 'member_status',     'inactive' );
 
 			wp_signon( array(
 				'user_login'    => $userdata[ 'user_login' ],
@@ -1430,11 +1489,11 @@ class ASA_Member_Portal {
 		if ( is_wp_error( $user_id ) ) return $cmb->prop( 'submission_error', $user_id );
 
 		// Make sure unhashed passwords are never stored in the database.
-		unset( $sanitized_values[ $prefix . 'pass' ], $sanitized_values[ $prefix . 'pass_confirm' ] );
+		unset( $sanitized_values[ $this->pu . 'pass' ], $sanitized_values[ $this->pu . 'pass_confirm' ] );
 		
 		$cmb->save_fields( $user_id, 'user', $sanitized_values );
 
-		$img_id = $this->frontend_image_upload( $prefix . 'company_logo' );
+		$img_id = $this->frontend_image_upload( $this->pu . 'company_logo' );
 
 		//$this->profile_update( $user_id );
 
@@ -1610,36 +1669,35 @@ class ASA_Member_Portal {
 
 		$roles = $this->get_asamp_roles_select();
 
-		$prefix = 'asamp_user_';
 		$keepers = array(
-			$prefix . 'login'                       => '',
-			$prefix . 'member_status'               => '',
-			$prefix . 'member_type'                 => '',
-			$prefix . 'member_date_joined'          => '',
-			$prefix . 'member_expiry'               => '',
-			$prefix . 'company_name'                => '',
-			$prefix . 'company_description'         => '',
-			$prefix . 'company_website'             => '',
-			$prefix . 'company_phone'               => '',
-			$prefix . 'company_fax'                 => '',
-			$prefix . 'company_email'               => '',
-			$prefix . 'company_street'              => '',
-			$prefix . 'company_city'                => '',
-			$prefix . 'company_state'               => '',
-			$prefix . 'company_zip'                 => '',
-			$prefix . 'company_year_founded'        => '',
-			$prefix . 'company_num_employees'       => '',
-			$prefix . 'company_contacts'            => '',
-			$prefix . 'company_business_type'       => '',
-			$prefix . 'company_business_type_other' => '',
+			$this->pu . 'login'                       => '',
+			$this->pu . 'member_status'               => '',
+			$this->pu . 'member_type'                 => '',
+			$this->pu . 'member_date_joined'          => '',
+			$this->pu . 'member_expiry'               => '',
+			$this->pu . 'company_name'                => '',
+			$this->pu . 'company_description'         => '',
+			$this->pu . 'company_website'             => '',
+			$this->pu . 'company_phone'               => '',
+			$this->pu . 'company_fax'                 => '',
+			$this->pu . 'company_email'               => '',
+			$this->pu . 'company_street'              => '',
+			$this->pu . 'company_city'                => '',
+			$this->pu . 'company_state'               => '',
+			$this->pu . 'company_zip'                 => '',
+			$this->pu . 'company_year_founded'        => '',
+			$this->pu . 'company_num_employees'       => '',
+			$this->pu . 'company_contacts'            => '',
+			$this->pu . 'company_business_type'       => '',
+			$this->pu . 'company_business_type_other' => '',
 		);
 		$serialized = array(
-			$prefix . 'company_contacts'            => 0,
-			$prefix . 'company_business_type'       => 0,
-			$prefix . 'company_business_type_other' => 0,
+			$this->pu . 'company_contacts'            => 0,
+			$this->pu . 'company_business_type'       => 0,
+			$this->pu . 'company_business_type_other' => 0,
 		);
 		$serialized_groups = array(
-			$prefix . 'company_contacts' => array(
+			$this->pu . 'company_contacts' => array(
 				'name_first',
 				'name_last',
 				'phone',
@@ -1677,40 +1735,40 @@ class ASA_Member_Portal {
 			}
 		}
 
-		$serialized[ $prefix . 'company_business_type' ] = $serialized[ $prefix . 'company_business_type' ] + $serialized[ $prefix . 'company_business_type_other' ];
-		if ( $serialized[ $prefix . 'company_business_type' ] > 0 ) {
-			for ( $i = 1; $i < $serialized[ $prefix . 'company_business_type' ] + 1; $i++ ) {
-				$keepers[ $prefix . 'company_business_type' . '_' . $i ] = '';
+		$serialized[ $this->pu . 'company_business_type' ] = $serialized[ $this->pu . 'company_business_type' ] + $serialized[ $this->pu . 'company_business_type_other' ];
+		if ( $serialized[ $this->pu . 'company_business_type' ] > 0 ) {
+			for ( $i = 1; $i < $serialized[ $this->pu . 'company_business_type' ] + 1; $i++ ) {
+				$keepers[ $this->pu . 'company_business_type' . '_' . $i ] = '';
 			}
 		}
 
 		foreach ( $users as $key => $value ) {
 			$user = $this->flatten_array( get_user_meta( $value->ID ) );
 
-			$user[ $prefix . 'login' ] = $value->data->user_login;
+			$user[ $this->pu . 'login' ] = $value->data->user_login;
 
-			$user[ $prefix . 'member_type' ] = $roles[ $user[ $prefix . 'member_type' ] ];
+			$user[ $this->pu . 'member_type' ] = $roles[ $user[ $this->pu . 'member_type' ] ];
 			
-			if ( ! empty( $user[ $prefix . 'company_contacts' ] ) ) {
-				$contacts = unserialize( $user[ $prefix . 'company_contacts' ] );
+			if ( ! empty( $user[ $this->pu . 'company_contacts' ] ) ) {
+				$contacts = unserialize( $user[ $this->pu . 'company_contacts' ] );
 				foreach ( $contacts as $i => $contact ) {
 					foreach ( $contact as $k => $v ) {
-						$user[ $prefix . 'company_contacts_' . ( $i + 1 ) . '_' . $k ] = $v;
+						$user[ $this->pu . 'company_contacts_' . ( $i + 1 ) . '_' . $k ] = $v;
 					}
 				}
 			}
 			
-			if ( ! empty( $user[ $prefix . 'company_business_type' ] ) || ! empty( $user[ $prefix . 'company_business_type_other' ] ) ) {
-				$types       = unserialize( $user[ $prefix . 'company_business_type'       ] );
-				$other_types = unserialize( $user[ $prefix . 'company_business_type_other' ] );
+			if ( ! empty( $user[ $this->pu . 'company_business_type' ] ) || ! empty( $user[ $this->pu . 'company_business_type_other' ] ) ) {
+				$types       = unserialize( $user[ $this->pu . 'company_business_type'       ] );
+				$other_types = unserialize( $user[ $this->pu . 'company_business_type_other' ] );
 				$n = 0;
 				foreach ( $types as $i => $type ) {
 					$n++;
-					$user[ $prefix . 'company_business_type_' . $n ] = $type;
+					$user[ $this->pu . 'company_business_type_' . $n ] = $type;
 				}
 				foreach ( $other_types as $i => $type ) {
 					$n++;
-					$user[ $prefix . 'company_business_type_' . $n ] = $type;
+					$user[ $this->pu . 'company_business_type_' . $n ] = $type;
 				}
 			}
 
@@ -1719,14 +1777,14 @@ class ASA_Member_Portal {
 			$users[ $key ] = $user;
 		}
 
-		unset( $keepers[ $prefix . 'company_contacts' ], $keepers[ $prefix . 'company_business_type' ], $keepers[ $prefix . 'company_business_type_other' ] );
+		unset( $keepers[ $this->pu . 'company_contacts' ], $keepers[ $this->pu . 'company_business_type' ], $keepers[ $this->pu . 'company_business_type_other' ] );
 		foreach ( $users as $i => $user ) {
-			unset( $user[ $prefix . 'company_contacts' ], $user[ $prefix . 'company_business_type' ], $user[ $prefix . 'company_business_type_other' ] );
+			unset( $user[ $this->pu . 'company_contacts' ], $user[ $this->pu . 'company_business_type' ], $user[ $this->pu . 'company_business_type_other' ] );
 			$users[ $i ] = $user;
 		}
 
 		$csv = Writer::createFromString( '' );
-		$csv->insertOne( str_replace( $prefix, '', array_keys( $keepers ) ) );
+		$csv->insertOne( str_replace( $this->pu, '', array_keys( $keepers ) ) );
 		$csv->insertAll( $users );
 		$csv->output( sanitize_key( get_bloginfo( 'name' ) ) . '_members_' . date( 'Y-m-d' ) . '.csv' );
 		exit();
@@ -1770,7 +1828,6 @@ class ASA_Member_Portal {
 	public function import_members() {
 		if ( 'asa_member_portal_import_members' !== $_POST[ 'object_id' ] || empty( $_POST[ 'upload_file_id' ] ) ) return;
 		
-		$prefix  = 'asamp_user_';
 		$roles   = $this->get_asamp_roles_select();
 		$csv     = Reader::createFromPath( get_attached_file( $_POST[ 'upload_file_id' ] ), 'r' );
 		$headers = $csv->fetchOne();
@@ -1853,26 +1910,26 @@ class ASA_Member_Portal {
 			update_user_option( $user_id, 'show_admin_bar_front', 'false' );
 
 			$user_meta = array(
-				'first_name'                            => $member[ 'company_name' ],
-				'nickname'                              => $member[ 'company_name' ],
-				$prefix . 'member_date_joined'          => $member[ 'member_date_joined' ],
-				$prefix . 'member_expiry'               => $member[ 'member_expiry' ],
-				$prefix . 'member_status'               => $member[ 'member_status' ],
-				$prefix . 'company_name'                => $member[ 'company_name' ],
-				$prefix . 'member_type'                 => $role,
-				$prefix . 'company_year_founded'        => $member[ 'company_year_founded' ],
-				$prefix . 'company_num_employees'       => $member[ 'company_num_employees' ],
-				$prefix . 'company_website'             => strtolower( $member[ 'company_website' ] ),
-				$prefix . 'company_email'               => strtolower( $member[ 'company_email' ] ),
-				$prefix . 'company_phone'               => $member[ 'company_phone' ],
-				$prefix . 'company_fax'                 => $member[ 'company_fax' ],
-				$prefix . 'company_street'              => $member[ 'company_street' ],
-				$prefix . 'company_city'                => $member[ 'company_city' ],
-				$prefix . 'company_state'               => $member[ 'company_state' ],
-				$prefix . 'company_zip'                 => $member[ 'company_zip' ],
-				$prefix . 'company_contacts'            => $this->get_contacts_from_csv( $member, 'company_contacts' ),
-				$prefix . 'company_business_type'       => $this->get_business_types_from_csv( $member, 'company_business_type' ),
-				$prefix . 'company_business_type_other' => $this->get_business_types_from_csv( $member, 'company_business_type', true ),
+				'first_name'                              => $member[ 'company_name' ],
+				'nickname'                                => $member[ 'company_name' ],
+				$this->pu . 'member_date_joined'          => $member[ 'member_date_joined' ],
+				$this->pu . 'member_expiry'               => $member[ 'member_expiry' ],
+				$this->pu . 'member_status'               => $member[ 'member_status' ],
+				$this->pu . 'company_name'                => $member[ 'company_name' ],
+				$this->pu . 'member_type'                 => $role,
+				$this->pu . 'company_year_founded'        => $member[ 'company_year_founded' ],
+				$this->pu . 'company_num_employees'       => $member[ 'company_num_employees' ],
+				$this->pu . 'company_website'             => strtolower( $member[ 'company_website' ] ),
+				$this->pu . 'company_email'               => strtolower( $member[ 'company_email' ] ),
+				$this->pu . 'company_phone'               => $member[ 'company_phone' ],
+				$this->pu . 'company_fax'                 => $member[ 'company_fax' ],
+				$this->pu . 'company_street'              => $member[ 'company_street' ],
+				$this->pu . 'company_city'                => $member[ 'company_city' ],
+				$this->pu . 'company_state'               => $member[ 'company_state' ],
+				$this->pu . 'company_zip'                 => $member[ 'company_zip' ],
+				$this->pu . 'company_contacts'            => $this->get_contacts_from_csv( $member, 'company_contacts' ),
+				$this->pu . 'company_business_type'       => $this->get_business_types_from_csv( $member, 'company_business_type' ),
+				$this->pu . 'company_business_type_other' => $this->get_business_types_from_csv( $member, 'company_business_type', true ),
 			);
 
 			foreach ( $user_meta as $k => $v ) {
@@ -2269,7 +2326,7 @@ class ASA_Member_Portal {
 			'id'         => $prefix . 'member_type',
 			'type'       => 'select',
 			'default'    => $this->get_member_role(),
-			'options'    => $this->get_asamp_roles_select( true ),
+			'options'    => $this->get_asamp_roles_select_with_price(),
 		) );
 		$cmb->add_field( array(
 			'name'            => __( 'Credit Card Info', 'asamp' ),
@@ -2785,352 +2842,66 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function user_meta_init() {
-		$prefix = 'asamp_user_';
+		$fields = array();
+		$fields = apply_filters( $this->td . '_user_meta_fields', $fields );
+		uasort( $fields, function( $a, $b ){
+			return $a[ 'priority' ] - $b[ 'priority' ];
+		} );
 
-		$cmb_user = new_cmb2_box( array(
-			'id'               => $prefix . 'edit',
+		$box = new_cmb2_box( array(
+			'id'               => $this->pu,
 			'object_types'     => array( 'user' ),
 			'show_names'       => true,
 			'new_user_section' => 'add-new-user',
 		) );
 
-		if ( is_admin() ) {
-			$cmb_user->add_field( array(
-				'name'            => __( 'ASA Membership Status', 'asamp' ),
-				'id'              => $prefix . 'member_status',
-				'type'            => 'radio_inline',
-				'default'         => 'inactive',
-				'options'         => array(
-					'active'   => __( 'Active',   'asamp' ),
-					'inactive' => __( 'Inactive', 'asamp' ),
-				),
-			) );
-
-			$cmb_user->add_field( array(
-				'name'            => __( 'ASA Membership Join Date', 'asamp' ),
-				'id'              => $prefix . 'member_date_joined',
-				'type'            => 'text_date',
-				'default'         => date( 'Y-m-d' ),
-				'date_format'     => 'Y-m-d',
-			) );
-
-			$cmb_user->add_field( array(
-				'name'            => __( 'ASA Membership Expiration Date', 'asamp' ),
-				'id'              => $prefix . 'member_expiry',
-				'type'            => 'text_date',
-				'default'         => date( 'Y-m-d' ),
-				'date_format'     => 'Y-m-d',
-			) );
-		}
-
-		$cmb_user->add_field( array(
-			'name'            => $this->is_member() || is_admin() ? __( 'Update ASA Member Profile', 'asamp' ) : __( 'Create New ASA Member Profile', 'asamp' ),
-			'id'              => $prefix . 'form_title',
-			'type'            => 'title',
-			'render_row_cb'   => array( $this, 'form_heading' ),
-		) );
-
-		if ( ! is_admin() ) {
-			$cmb_user->add_field( array(
-				'name'            => __( 'Company Info', 'asamp' ),
-				'id'              => $prefix . 'section_company_info',
-				'type'            => 'title',
-				'render_row_cb'   => array( $this, 'open_fieldset' ),
-			) );
-		}
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Company Name', 'asamp' ),
-			'id'              => $prefix . 'company_name',
-			'type'            => 'text',
-			'attributes'      => array(
-				'required' => 'required',
+		$box->add_hidden_field( array(
+			'field_args'  => array(
+				'id'      => $this->pu . 'nonce',
+				'type'    => 'hidden',
+				'default' => wp_create_nonce( $this->pu . 'nonce' ),
 			),
 		) );
 
-		$cmb_user->add_field( array(
-			'name'            => __( 'Company Description', 'asamp' ),
-			'id'              => $prefix . 'company_description',
-			'type'            => 'textarea',
-		) );
+		if ( $this->is_member() ) $this->view = 'member';
+		if ( is_admin() )         $this->view = 'admin';
 
-		$cmb_user->add_field( array(
-			'name'            => __( 'Company Address', 'asamp' ),
-			'id'              => $prefix . 'company_street',
-			'type'            => 'text',
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'City', 'asamp' ),
-			'id'              => $prefix . 'company_city',
-			'type'            => 'text',
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'State', 'asamp' ),
-			'id'              => $prefix . 'company_state',
-			'type'            => 'select',
-			'default'         => $this->options[ 'state_default' ],
-			'options'         => $this->get_us_states_array(),
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Zip', 'asamp' ),
-			'id'              => $prefix . 'company_zip',
-			'type'            => 'text',
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Latitude', 'asamp' ),
-			'id'              => $prefix . 'lat',
-			'type'            => 'hidden',
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Longitude', 'asamp' ),
-			'id'              => $prefix . 'lng',
-			'type'            => 'hidden',
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Company Phone', 'asamp' ),
-			'id'              => $prefix . 'company_phone',
-			'type'            => 'text',
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Company Fax', 'asamp' ),
-			'id'              => $prefix . 'company_fax',
-			'type'            => 'text',
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Company Email', 'asamp' ),
-			'id'              => $prefix . 'company_email',
-			'type'            => 'text_email',
-			'attributes'  => array(
-				'required' => 'required',
-			),
-		) );
-
-		if ( $this->is_member() ) {
-			$cmb_user->add_field( array(
-				'name'            => 'Company Logo',
-				'id'              => $prefix . 'company_logo',
-				'type'            => 'text',
-				'attributes'      => array(
-					'type' => 'file',
-				),
-			) );
-		}
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Website', 'asamp' ),
-			'id'              => $prefix . 'company_website',
-			'type'            => 'text_url',
-			'protocols'       => array( 'http', 'https' ),
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Year Founded', 'asamp' ),
-			'id'              => $prefix . 'company_year_founded',
-			'type'            => 'select',
-			'sanitization_cb' => 'absint',
-			'default'         => date( 'Y', strtotime( date( 'Y' ) . ' -5 years' ) ),
-			'options'         => $this->get_years_array( date( 'Y', strtotime( date( 'Y' ) . ' -100 years' ) ) ),
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Number of Employees', 'asamp' ),
-			'id'              => $prefix . 'company_num_employees',
-			'type'            => 'text',
-			'sanitization_cb' => 'absint',
-			'default'         => 3,
-			'attributes'      => array(
-				'type'    => 'number',
-				'pattern' => '\d*',
-				'min'     => 1,
-			),
-		) );
-
-		$cmb_user->add_field( array(
-			'name'            => __( 'Business Type/Trade', 'asamp' ),
-			'id'              => $prefix . 'company_business_type',
-			'type'            => 'multicheck_inline',
-			'options'         => function(){
-				$asamp_member_portal_trades = array();
-				if ( ! empty( $this->options[ 'trades' ] ) ) {
-					$asamp_member_portal_trades = explode( "\r\n", $this->options[ 'trades' ] );
-				} else {
-					$asamp_member_portal_trades = $this->get_default_trades_array();
+		$group_ids = array();
+		foreach ( $fields as $id => $field ) {
+			if ( isset( $field[ 'visibility' ] ) ) {
+				foreach ( $field[ 'visibility' ] as $k => $v ) {
+					if ( is_array( $v ) ) {
+						if ( isset( $v[ 'option' ] ) && $v[ 'value' ] === $this->get_option( $v[ 'option' ] ) ) {
+							if ( $v[ 'negate' ] ) continue 2;
+						}
+						unset( $field[ 'visibility' ][ $k ] );
+					}
 				}
-
-				$r = array();
-				foreach ( $asamp_member_portal_trades as $v ) {
-					$r[ esc_attr__( $v ) ] = $v;
-				}
-
-				return $r;
-			},
-		) );
-
-		if ( 'no' !== $this->options[ 'trades_other' ] ) {
-			$cmb_user->add_field( array(
-				'name'            => __( 'Business Type/Trade Other', 'asamp' ),
-				'id'              => $prefix . 'company_business_type_other',
-				'type'            => 'text',
-				'show_names'      => false,
-				'repeatable'      => true,
-				'attributes'      => array(
-					'placeholder' => 'Other',
-				),
-				'text'            => array(
-					'add_row_text' => __( 'Add Another "Other" Type/Trade', 'asamp' ),
-				),
-			) );
-		}
-
-		if ( ! is_admin() ) {
-			$cmb_user->add_field( array(
-				'name'            => __( 'Contacts', 'asamp' ),
-				'id'              => $prefix . 'section_company_contacts',
-				'type'            => 'title',
-				'render_row_cb'   => array( $this, 'open_fieldset' ),
-			) );
-		}
-
-		$group_field_id = $cmb_user->add_field( array(
-			'id'              => $prefix . 'company_contacts',
-			'type'            => 'group',
-			'options'         => array(
-				'group_title'   => __( 'Contact #{#}', 'asamp' ),
-				'add_button'    => __( 'Add Another Contact', 'asamp' ),
-				'remove_button' => __( 'Remove Contact', 'asamp' ),
-				'sortable'      => true,
-			),
-		) );
-
-			$cmb_user->add_group_field( $group_field_id, array(
-				'name'            => __( 'First Name', 'asamp' ),
-				'id'              => 'name_first',
-				'type'            => 'text',
-			) );
-
-			$cmb_user->add_group_field( $group_field_id, array(
-				'name'            => __( 'Last Name', 'asamp' ),
-				'id'              => 'name_last',
-				'type'            => 'text',
-			) );
-
-			$cmb_user->add_group_field( $group_field_id, array(
-				'name'            => __( 'Phone', 'asamp' ),
-				'id'              => 'phone',
-				'type'            => 'text',
-			) );
-
-			$cmb_user->add_group_field( $group_field_id, array(
-				'name'            => __( 'Fax', 'asamp' ),
-				'id'              => 'fax',
-				'type'            => 'text',
-			) );
-
-			$cmb_user->add_group_field( $group_field_id, array(
-				'name'            => __( 'Email', 'asamp' ),
-				'id'              => 'email',
-				'type'            => 'text_email',
-			) );
-
-			$cmb_user->add_group_field( $group_field_id, array(
-				'name'            => __( 'Title', 'asamp' ),
-				'id'              => 'title',
-				'type'            => 'text',
-			) );
-
-			$cmb_user->add_group_field( $group_field_id, array(
-				'name'            => __( 'ASA Position', 'asamp' ),
-				'id'              => 'asa_position',
-				'type'            => 'text',
-			) );
-
-		if ( ! is_admin() ) {
-			if ( ! $this->is_member() ) {
-
-				$cmb_user->add_field( array(
-					'name'            => __( 'Membership', 'asamp' ),
-					'id'              => $prefix . 'section_member_type',
-					'type'            => 'title',
-					'render_row_cb'   => array( $this, 'open_fieldset' ),
-				) );
-
-				$cmb_user->add_field( array(
-					'name'            => ! empty( $this->options[ 'member_type_label' ] ) ? $this->options[ 'member_type_label' ] : $this->get_default_member_type_label(),
-					'id'              => $prefix . 'member_type',
-					'type'            => 'select',
-					'options'         => $this->get_asamp_roles_select( true ),
-				) );
-
-				$cmb_user->add_field( array(
-					'name'            => __( 'Login Info', 'asamp' ),
-					'id'              => $prefix . 'section_login_info',
-					'type'            => 'title',
-					'render_row_cb'   => array( $this, 'open_fieldset' ),
-				) );
-
-				$cmb_user->add_field( array(
-					'name'            => __( 'Username', 'asamp' ),
-					'id'              => $prefix . 'login',
-					'type'            => 'text',
-					'attributes'      => array(
-						'required' => 'required',
-					),
-				) );
+				if ( ! empty( $field[ 'visibility' ] ) && ! in_array( $this->view, $field[ 'visibility' ] ) ) continue;
+				//unset( $field[ 'visibility' ] );
 			}
 
-			if ( $this->is_member() ) {
-				$cmb_user->add_field( array(
-					'name'            => __( 'Change Password', 'asamp' ),
-					'id'              => $prefix . 'section_login_info',
-					'type'            => 'title',
-					'render_row_cb'   => array( $this, 'open_fieldset' ),
-				) );
+			if ( is_array( $field[ 'name' ] ) ) $field[ 'name' ] = $field[ 'name' ][ $this->view ];
+
+			if ( is_string( $field[ 'options' ] ) ) $field[ 'options' ] = call_user_func( array( $this, $field[ 'options' ] ) );
+
+			foreach ( $field as $k => $v ) {
+				if (                    false !== strpos( $k, '_cb' ) )  $field[ $k ] = array( $this, $v );
+				if ( is_string( $v ) && false !== strpos( $v, 'opt_' ) ) $field[ $k ] = $this->get_option( ltrim( $v, 'opt_' ) );
 			}
-			
-			$args = array(
-				'name'            => $this->is_member() ? __( 'New Password', 'asamp' ) : __( 'Password', 'asamp' ),
-				'id'              => $prefix . 'pass',
-				'type'            => 'text',
-				'attributes'      => array(
-					'type'     => 'password',
-				),
-			);
-			if ( ! $this->is_member() ) $args[ 'attributes' ][ 'required' ] = 'required';
-			$cmb_user->add_field( $args );
 
-			$args = array(
-				'name'            => __( 'Confirm Password', 'asamp' ),
-				'id'              => $prefix . 'pass_confirm',
-				'type'            => 'text',
-				'attributes'      => array(
-					'type'     => 'password',
-				),
-			);
-			if ( ! $this->is_member() ) $args[ 'attributes' ][ 'required' ] = 'required';
-			$cmb_user->add_field( $args );
+			if ( 'member' === $this->view && 'password' === $field[ 'attributes' ][ 'type' ] ) unset( $field[ 'attributes' ][ 'required' ] );
 
-			$cmb_user->add_hidden_field( array(
-				'field_args'  => array(
-					'id'      => $prefix . 'nonce',
-					'type'    => 'hidden',
-					'default' => wp_create_nonce( $prefix . 'nonce' ),
-				),
-			) );
-
-			$cmb_user->add_field( array(
-				'name'            => __( 'End Form', 'asamp' ),
-				'id'              => $prefix . 'section_end_form',
-				'type'            => 'title',
-				'render_row_cb'   => array( $this, 'close_fieldset' ),
-			) );
+			if ( isset( $field[ 'parent' ] ) ) {
+				$field[ 'id' ] = $id;
+				$parent = $field[ 'parent' ];
+				//unset( $field[ 'parent' ] );
+				$box->add_group_field( $group_ids[ $parent ], $field );
+			} else {
+				$field[ 'id' ] = $this->pu . $id;
+				$field_id = $box->add_field( $field );
+				if ( 'group' === $field[ 'type' ] ) $group_ids[ $id ] = $field_id;
+			}
 		}
 	}
 
@@ -3274,6 +3045,321 @@ class ASAMP_One_Time_Notices {
 		delete_option( 'asamp_one_time_notices' );
 	}
 
+}
+
+add_filter( 'asamp_user_meta_fields', 'asamp_asa_specific_fields' );
+function asamp_asa_specific_fields( $fields ) {
+	$fields[ 'member_status' ] = array(
+		'export'          => true,
+		'priority'        => 100,
+		'name'            => __( 'ASA Membership Status', 'asamp' ),
+		'type'            => 'radio_inline',
+		'default'         => 'inactive',
+		'visibility'      => array( 'admin' ),
+		'options'         => array(
+			'active'   => __( 'Active',   'asamp' ),
+			'inactive' => __( 'Inactive', 'asamp' ),
+		),
+	);
+	$fields[ 'member_date_joined' ] = array(
+		'export'          => true,
+		'priority'        => 120,
+		'name'            => __( 'ASA Membership Join Date', 'asamp' ),
+		'type'            => 'text_date',
+		'default'         => date( 'Y-m-d' ),
+		'visibility'      => array( 'admin' ),
+		'date_format'     => 'Y-m-d',
+	);
+	$fields[ 'member_expiry' ] = array(
+		'export'          => true,
+		'priority'        => 140,
+		'name'            => __( 'ASA Membership Expiration Date', 'asamp' ),
+		'type'            => 'text_date',
+		'default'         => date( 'Y-m-d' ),
+		'visibility'      => array( 'admin' ),
+		'date_format'     => 'Y-m-d',
+	);
+	$fields[ 'form_title' ] = array(
+		'priority'        => 160,
+		'name'            => array(
+			'admin'      => __( 'Update ASA Member Profile', 'asamp' ),
+			'member'     => __( 'Update ASA Member Profile', 'asamp' ),
+			'non-member' => __( 'Create New ASA Member Profile', 'asamp' ),
+		),
+		'type'            => 'title',
+		'render_row_cb'   => 'form_heading',
+	);
+	$fields[ 'section_company_info' ] = array(
+		'priority'        => 180,
+		'name'            => __( 'Company Info', 'asamp' ),
+		'type'            => 'title',
+		'visibility'      => array( 'member', 'non-member' ),
+		'render_row_cb'   => 'open_fieldset',
+	);
+	$fields[ 'company_name' ] = array(
+		'export'          => true,
+		'priority'        => 200,
+		'name'            => __( 'Company Name', 'asamp' ),
+		'type'            => 'text',
+		'attributes'      => array(
+			'required' => 'required',
+		),
+	);
+	$fields[ 'company_description' ] = array(
+		'export'          => true,
+		'priority'        => 220,
+		'name'            => __( 'Company Description', 'asamp' ),
+		'type'            => 'textarea',
+	);
+	$fields[ 'company_street' ] = array(
+		'export'          => true,
+		'priority'        => 240,
+		'name'            => __( 'Company Address', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'company_city' ] = array(
+		'export'          => true,
+		'priority'        => 260,
+		'name'            => __( 'City', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'company_state' ] = array(
+		'export'          => true,
+		'priority'        => 280,
+		'name'            => __( 'State', 'asamp' ),
+		'type'            => 'select',
+		'default'         => 'opt_state_default',
+		'options'         => 'get_us_states_array',
+		'attributes'      => array(
+			'required' => 'required',
+		),
+	);
+	$fields[ 'company_zip' ] = array(
+		'export'          => true,
+		'priority'        => 300,
+		'name'            => __( 'Zip', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'company_phone' ] = array(
+		'export'          => true,
+		'priority'        => 320,
+		'name'            => __( 'Company Phone', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'company_fax' ] = array(
+		'export'          => true,
+		'priority'        => 340,
+		'name'            => __( 'Company Fax', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'company_email' ] = array(
+		'export'          => true,
+		'priority'        => 360,
+		'name'            => __( 'Company Email', 'asamp' ),
+		'type'            => 'text_email',
+		'attributes'  => array(
+			'required' => 'required',
+		),
+	);
+	$fields[ 'company_logo' ] = array(
+		'priority'        => 380,
+		'name'            => __( 'Company Logo', 'asamp' ),
+		'type'            => 'text',
+		'visibility'      => array( 'member' ),
+		'attributes'  => array(
+			'type' => 'file',
+		),
+	);
+	$fields[ 'company_website' ] = array(
+		'export'          => true,
+		'priority'        => 400,
+		'name'            => __( 'Website', 'asamp' ),
+		'type'            => 'text_url',
+		'protocols'       => array( 'http', 'https' ),
+	);
+	$fields[ 'company_year_founded' ] = array(
+		'export'          => true,
+		'priority'        => 420,
+		'name'            => __( 'Year Founded', 'asamp' ),
+		'type'            => 'select',
+		'default'         => date( 'Y', strtotime( date( 'Y' ) . ' -5 years' ) ),
+		'options'         => 'get_year_founded_array',
+		'sanitization_cb' => 'absint',
+	);
+	$fields[ 'company_num_employees' ] = array(
+		'export'          => true,
+		'priority'        => 440,
+		'name'            => __( 'Number of Employees', 'asamp' ),
+		'type'            => 'text',
+		'default'         => 3,
+		'sanitization_cb' => 'absint',
+		'attributes'      => array(
+			'type'    => 'number',
+			'min'     => 1,
+		),
+	);
+	$fields[ 'company_business_type' ] = array(
+		'export'          => true,
+		'priority'        => 460,
+		'name'            => __( 'Business Type/Trade', 'asamp' ),
+		'type'            => 'multicheck_inline',
+		'options'         => 'get_trades_array',
+	);
+	$fields[ 'company_business_type_other' ] = array(
+		'export'          => true,
+		'priority'        => 480,
+		'name'            => __( 'Business Type/Trade Other', 'asamp' ),
+		'type'            => 'text',
+		'visibility'      => array(
+			array(
+				'option' => 'trades_other',
+				'value'  => 'no',
+				'negate' => true,
+			),
+		),
+		'show_names'      => false,
+		'repeatable'      => true,
+		'attributes'      => array(
+			'placeholder' => 'Other',
+		),
+		'text'            => array(
+			'add_row_text' => __( 'Add Another "Other" Type/Trade', 'asamp' ),
+		),
+	);
+	$fields[ 'section_company_contacts' ] = array(
+		'priority'        => 500,
+		'name'            => __( 'Contacts', 'asamp' ),
+		'type'            => 'title',
+		'visibility'      => array( 'member', 'non-member' ),
+		'render_row_cb'   => 'open_fieldset',
+	);
+	$fields[ 'company_contacts' ] = array(
+		'export'          => true,
+		'priority'        => 520,
+		'type'            => 'group',
+		'options'         => array(
+			'group_title'   => __( 'Contact #{#}', 'asamp' ),
+			'add_button'    => __( 'Add Another Contact', 'asamp' ),
+			'remove_button' => __( 'Remove Contact', 'asamp' ),
+			'sortable'      => true,
+		),
+	);
+	$fields[ 'name_first' ] = array(
+		'export'          => true,
+		'priority'        => 540,
+		'parent'          => 'company_contacts',
+		'name'            => __( 'First Name', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'name_last' ] = array(
+		'export'          => true,
+		'priority'        => 560,
+		'parent'          => 'company_contacts',
+		'name'            => __( 'Last Name', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'phone' ] = array(
+		'export'          => true,
+		'priority'        => 580,
+		'parent'          => 'company_contacts',
+		'name'            => __( 'Phone', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'fax' ] = array(
+		'export'          => true,
+		'priority'        => 600,
+		'parent'          => 'company_contacts',
+		'name'            => __( 'Fax', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'email' ] = array(
+		'export'          => true,
+		'priority'        => 620,
+		'parent'          => 'company_contacts',
+		'name'            => __( 'Email', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'title' ] = array(
+		'export'          => true,
+		'priority'        => 640,
+		'parent'          => 'company_contacts',
+		'name'            => __( 'Title', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'asa_position' ] = array(
+		'export'          => true,
+		'priority'        => 660,
+		'parent'          => 'company_contacts',
+		'name'            => __( 'ASA Position', 'asamp' ),
+		'type'            => 'text',
+	);
+	$fields[ 'section_member_type' ] = array(
+		'priority'        => 680,
+		'name'            => __( 'Membership', 'asamp' ),
+		'type'            => 'title',
+		'visibility'      => array( 'non-member' ),
+		'render_row_cb'   => 'open_fieldset',
+	);
+	$fields[ 'member_type' ] = array(
+		'export'          => true,
+		'priority'        => 700,
+		'name'            => 'opt_member_type_label',
+		'type'            => 'select',
+		'visibility'      => array( 'non-member' ),
+		'options'         => 'get_asamp_roles_select_with_price',
+	);
+	$fields[ 'section_login_info' ] = array(
+		'priority'        => 720,
+		'name'            => array(
+			'member'     => __( 'Change Password', 'asamp' ),
+			'non-member' => __( 'Login Info', 'asamp' ),
+		),
+		'type'            => 'title',
+		'visibility'      => array( 'member', 'non-member' ),
+		'render_row_cb'   => 'open_fieldset',
+	);
+	$fields[ 'login' ] = array(
+		'export'          => true,
+		'priority'        => 740,
+		'name'            => __( 'Username', 'asamp' ),
+		'type'            => 'text',
+		'visibility'      => array( 'non-member' ),
+		'attributes'      => array(
+			'required' => 'required',
+		),
+	);
+	$fields[ 'pass' ] = array(
+		'export'          => true,
+		'priority'        => 760,
+		'name'            => array(
+			'member'     => __( 'New Password', 'asamp' ),
+			'non-member' => __( 'Password', 'asamp' ),
+		),
+		'type'            => 'text',
+		'visibility'      => array( 'member', 'non-member' ),
+		'attributes'      => array(
+			'type'     => 'password',
+			'required' => 'required',
+		),
+	);
+	$fields[ 'pass_confirm' ] = array(
+		'priority'        => 780,
+		'name'            => __( 'Confirm Password', 'asamp' ),
+		'type'            => 'text',
+		'visibility'      => array( 'member', 'non-member' ),
+		'attributes'      => array(
+			'type'     => 'password',
+			'required' => 'required',
+		),
+	);
+	$fields[ 'section_end_form' ] = array(
+		'priority'        => 800,
+		'name'            => __( 'End Form', 'asamp' ),
+		'type'            => 'title',
+		'render_row_cb'   => 'close_fieldset',
+	);
+
+	return $fields;
 }
 
 ?>
