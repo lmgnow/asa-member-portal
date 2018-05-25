@@ -2452,7 +2452,7 @@ class ASA_Member_Portal {
 		$boxes = array();
 		
 		$boxes[ 'registration' ] = array(
-			'priority' => 10,
+			//'priority' => 10,
 			'title'    => __( 'Profile/Registration', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2545,7 +2545,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'directory' ] = array(
-			'priority' => 20,
+			//'priority' => 20,
 			'title'    => __( 'Member Directory', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2575,7 +2575,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'map' ] = array(
-			'priority' => 30,
+			//'priority' => 30,
 			'title'    => __( 'Member Map', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2611,7 +2611,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'pages' ] = array(
-			'priority' => 40,
+			//'priority' => 40,
 			'title'    => __( 'Pages', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2633,7 +2633,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'administration' ] = array(
-			'priority' => 50,
+			//'priority' => 50,
 			'title'    => __( 'Administration', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2685,7 +2685,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'payment_PayPal_Pro' ] = array(
-			'priority' => 60,
+			//'priority' => 60,
 			'title'    => __( 'PayPal Pro', 'asamp' ),
 			'tab'      => 'payment',
 			'fields'   => array(
@@ -2723,7 +2723,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'payment_Stripe' ] = array(
-			'priority' => 70,
+			//'priority' => 70,
 			'title'    => __( 'Stripe', 'asamp' ),
 			'tab'      => 'payment',
 			'fields'   => array(
@@ -2746,7 +2746,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'instructions' ] = array(
-			'priority' => 80,
+			//'priority' => 80,
 			'title'    => __( 'Usage Instructions', 'asamp' ),
 			'tab'      => 'usage',
 			'fields'   => array(
@@ -2762,10 +2762,6 @@ class ASA_Member_Portal {
 		$boxes = apply_filters( $this->td . '_options', $boxes );
 
 		foreach ( $boxes as $id => $box ) {
-			add_filter( $this->td . '_options_tabs', function(){
-				$tabs[ $box[ 'tab' ] ][ 'boxes' ][] = $id;
-			} );
-
 			$box[ 'id' ]              = $id;
 			$box[ 'display_cb' ]      = false;
 			$box[ 'admin_menu_hook' ] = false;
@@ -2774,9 +2770,11 @@ class ASA_Member_Portal {
 				'value' => array( $this->td . '_options' ),
 			);
 
-			$boxes[ $id ] = $this->build_box( $box, $box[ 'fields' ] );
-
+			$boxes[ $id ] = new_cmb2_box( $box );
+			$boxes[ $id ] = $this->add_fields( $boxes[ $id ], $box[ 'fields' ] );
 			$boxes[ $id ]->object_type( 'options-page' );
+
+			add_filter( $this->td . '_options_tabs', function(){ $tabs[ $box[ 'tab' ] ][ 'boxes' ][] = $id; } );
 		}
 		
 		return $boxes;
@@ -2852,7 +2850,7 @@ class ASA_Member_Portal {
 			'new_user_section' => 'add-new-user',
 		) );
 
-		$this->build_box( $box, $fields, $this->pu );
+		$this->add_fields( $box, $fields, $this->pu );
 	}
 
 	/**
@@ -2864,14 +2862,16 @@ class ASA_Member_Portal {
 	 *
 	 * @return void
 	 */
-	private function build_box( $box, $fields, $key = '' ) {
-		$box->add_hidden_field( array(
-			'field_args'  => array(
-				'id'      => $key . 'nonce',
-				'type'    => 'hidden',
-				'default' => wp_create_nonce( $key . 'nonce' ),
-			),
-		) );
+	private function add_fields( $box, $fields, $key = '' ) {
+		if ( ! empty( $key ) ) {
+			$box->add_hidden_field( array(
+				'field_args'  => array(
+					'id'      => $key . 'nonce',
+					'type'    => 'hidden',
+					'default' => wp_create_nonce( $key . 'nonce' ),
+				),
+			) );
+		}
 
 		$group_ids = array();
 		foreach ( $fields as $id => $field ) {
@@ -2894,7 +2894,7 @@ class ASA_Member_Portal {
 
 			foreach ( $field as $k => $v ) {
 				if (                    false !== strpos( $k, '_cb' ) )  $field[ $k ] = array( $this, $v );
-				if ( is_string( $v ) && false !== strpos( $v, 'opt_' ) ) $field[ $k ] = $this->get_option( ltrim( $v, 'opt_' ) );
+				if ( is_string( $v ) && false !== strpos( $v, 'opt_' ) ) $field[ $k ] = $this->get_option( str_replace( 'opt_', '', $v ) );
 			}
 
 			if ( 'member' === $this->viewer() && 'password' === $field[ 'attributes' ][ 'type' ] ) unset( $field[ 'attributes' ][ 'required' ] );
