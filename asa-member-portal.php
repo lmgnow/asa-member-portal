@@ -1,7 +1,7 @@
 <?php
 /**
  * @wordpress-plugin
- * Plugin Name:       ASA Member Portal
+ * Plugin Name:       Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
  * Version:           1.1.7
@@ -56,7 +56,7 @@ class ASA_Member_Portal {
 		require_once $this->plugin_dir_path . 'includes/pallazzio-wpghu/pallazzio-wpghu.php';
 		new Pallazzio_WPGHU( $this->plugin_dir_path . wp_basename( $this->plugin_file_path ), 'lmgnow' );
 
-		$this->options = get_option( 'asa_member_portal' );
+		$this->options = get_option( 'asamp' );
 
 		register_activation_hook(   $this->plugin_file_path, array( $this, 'activate'   ) );
 		register_deactivation_hook( $this->plugin_file_path, array( $this, 'deactivate' ) );
@@ -64,13 +64,14 @@ class ASA_Member_Portal {
 		add_action( 'wp_enqueue_scripts',    array( $this, 'asamp_enqueue' )        );
 		add_action( 'admin_enqueue_scripts', array( $this, 'admin_enqueue' ), 10, 1 );
 
-		add_action(    'add_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
-		add_action( 'update_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
-		add_action( 'delete_option_asa_member_portal', array( $this, 'create_roles' ), 10, 2 );
+		add_action(    'add_option_asamp', array( $this, 'create_roles' ), 10, 2 );
+		add_action( 'update_option_asamp', array( $this, 'create_roles' ), 10, 2 );
+		add_action( 'delete_option_asamp', array( $this, 'create_roles' ), 10, 2 );
 
 		add_action( 'user_register',  array( $this, 'set_user_options' ), 10, 1 );
 		add_action( 'profile_update', array( $this, 'set_user_options' ), 10, 1 );
 		add_action( 'profile_update', array( $this, 'profile_update'   ), 10, 1 );
+		add_action( 'set_user_role',  array( $this, 'set_member_type'  ), 10, 1 );
 
 		add_action( 'save_post_asamp_dues_payment', array( $this, 'dues_payment_save' ), 10, 3 );
 
@@ -105,7 +106,7 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function activate() {
-		$this->create_roles( 'asa_member_portal', array( array( 'name' => $this->get_default_member_type_name() ) ) );
+		$this->create_roles( 'asamp', array( array( 'name' => $this->get_default_member_type_name() ) ) );
 	}
 
 	/**
@@ -146,7 +147,7 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function admin_enqueue( $hook ) {
-		$hooks = array( 'settings_page_asa_member_portal', 'users_page_asa_member_portal_import_members', 'user-new.php', 'profile.php' );
+		$hooks = array( 'settings_page_asamp', 'users_page_asamp_import_members', 'user-new.php', 'profile.php' );
 		foreach ( $hooks as $v ) {
 			if ( $v === $hook ) {
 				wp_enqueue_style(  'asamp_admin_style',  $this->plugin_dir_url . 'css/asamp-admin-style.css', array(          ), $this->version, 'screen' );
@@ -163,9 +164,9 @@ class ASA_Member_Portal {
 	 * @return array $links
 	 */
 	public function add_settings_link( $links ) {
-		$import_link = '<a href="users.php?page=asa_member_portal_import_members">' . __( 'Import Members', 'asamp' ) . '</a>';
+		$import_link = '<a href="users.php?page=asamp_import_members">' . __( 'Import Members', 'asamp' ) . '</a>';
 		array_unshift( $links, $import_link );
-		$settings_link = '<a href="options-general.php?page=asa_member_portal&tab=opt-tab-general">' . __( 'Settings', 'asamp' ) . '</a>';
+		$settings_link = '<a href="options-general.php?page=asamp&tab=opt-tab-general">' . __( 'Settings', 'asamp' ) . '</a>';
 		array_unshift( $links, $settings_link );
 		return $links;
 	}
@@ -202,7 +203,7 @@ class ASA_Member_Portal {
 	private function get_member_role() {
 		if ( $this->is_member() ) {
 			$role = array_intersect( $this->user()->roles, array_keys( $this->get_asamp_roles() ) );
-			return $role[ 0 ];
+			return reset( $role );
 		}
 		return false;
 	}
@@ -236,7 +237,7 @@ class ASA_Member_Portal {
 	public function create_roles( $option_name = null, $option_value = null ) {
 		$this->delete_roles();
 
-		$this->options = get_option( 'asa_member_portal' );
+		$this->options = get_option( 'asamp' );
 		if ( ! empty( $this->options[ 'member_types' ] ) ) {
 			$member_types = $this->options[ 'member_types' ];
 		} else {
@@ -577,7 +578,7 @@ class ASA_Member_Portal {
 			$order = $this->get_asamp_roles_select();
 			//$this->write_log( $order, 'oooorder' );
 			usort( $users, function( $a, $b ) {
-				$strcmp = strcmp( $a->roles[ 0 ], $b->roles[ 0 ] );
+				$strcmp = strcmp( reset( $a->roles ), reset( $b->roles ) );
 				if ( 0 === $strcmp ) return 1;
 				return $strcmp;
 			} );
@@ -826,7 +827,6 @@ class ASA_Member_Portal {
 	 * Updates some user meta fields anytime user profile is updated.
 	 *
 	 * @param int $user_id
-	 * @param array $old_user_data
 	 *
 	 * @return void
 	 */
@@ -837,6 +837,19 @@ class ASA_Member_Portal {
 		update_user_meta( $user_id, $this->pu . 'geocode_fail_count', '' );
 
 		if ( get_option( 'asamp_bad_address_notice' ) == $user_id ) update_option( 'asamp_bad_address_notice', '' );
+	}
+
+	/**
+	 * Updates user meta field member_type.
+	 *
+	 * @param int $user_id
+	 *
+	 * @return void
+	 */
+	public function set_member_type( $user_id ) {
+		$user_meta   = get_userdata( $user_id );
+		$member_type = array_intersect( $user_meta->roles, array_keys( $this->get_asamp_roles() ) );
+		update_user_meta( $user_id, $this->pu . 'member_type', reset( $member_type ) );
 	}
 
 	/**
@@ -938,7 +951,7 @@ class ASA_Member_Portal {
 	public function flatten_array( $r ) {
 		foreach ( $r as $k => $v ) {
 			if ( is_array( $v ) && 1 === count( $v ) ) {
-				$r[ $k ] = $v[ 0 ];
+				$r[ $k ] = reset( $v );
 			}
 		}
 
@@ -1730,7 +1743,7 @@ class ASA_Member_Portal {
 			$user = get_user_meta( $value->ID );
 			foreach ( $serialized as $k => $v ) {
 				if ( ! empty( $user[ $k ] ) ) {
-					$c = ltrim( $user[ $k ][ 0 ], 'a:' );
+					$c = ltrim( reset( $user[ $k ] ), 'a:' );
 					$c = strstr( $c, ':', true );
 					$serialized[ $k ] = $c > $serialized[ $k ] ? $c : $serialized[ $k ];
 				}
@@ -1838,7 +1851,7 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function import_members() {
-		if ( 'asa_member_portal_import_members' !== $_POST[ 'object_id' ] || empty( $_POST[ 'upload_file_id' ] ) ) return;
+		if ( 'asamp_import_members' !== $_POST[ 'object_id' ] || empty( $_POST[ 'upload_file_id' ] ) ) return;
 		
 		$roles   = $this->get_asamp_roles_select();
 		$csv     = Reader::createFromPath( get_attached_file( $_POST[ 'upload_file_id' ] ), 'r' );
@@ -2366,56 +2379,17 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * Adds tabs to the plugin options page.
-	 *
-	 * @return array $tabs
-	 */
-	private function options_add_tabs() {
-		$tabs = array(
-			array(
-				'id'    => 'general',
-				'title' => __( 'General', 'asamp' ),
-				'boxes' => array(
-					'registration',
-					'directory',
-					'map',
-					'pages',
-					'administration',
-				),
-			),
-			array(
-				'id'    => 'payment',
-				'title' => __( 'Payment', 'asamp' ),
-				'boxes' => array(
-					'payment_PayPal_Pro',
-					'payment_Stripe',
-				),
-			),
-			array(
-				'id'    => 'usage',
-				'title' => __( 'Usage', 'asamp' ),
-				'boxes' => array(
-					'instructions',
-				),
-			),
-		);
-		
-		return $tabs;
-	}
-
-	/**
 	 * Adds plugin options.
 	 *
 	 * @return void
 	 */
 	public function options_init() {
-		$options_key = 'asa_member_portal';
 		new Cmb2_Metatabs_Options( array(
-			'key'      => $options_key,
+			'key'      => 'asamp_options',
 			'title'    => __( 'Member Portal Settings', 'asamp' ),
 			'topmenu'  => 'options-general.php',
-			'resettxt' => ''/*__( 'Restore Defaults', 'asamp' )*/,
-			'boxes'    => $this->options_add_boxes( $options_key ),
+			'resettxt' => '',
+			'boxes'    => $this->options_add_boxes( 'asamp_options' ),
 			'tabs'     => $this->options_add_tabs(),
 			'menuargs' => array(
 				'menu_title'      => __( 'Membership', 'asamp' ),
@@ -2424,19 +2398,45 @@ class ASA_Member_Portal {
 			),
 		) );
 
-		$import_members_key = 'asa_member_portal_import_members';
+		$import_members_key = 'asamp_import_members';
 		new Cmb2_Metatabs_Options( array(
 			'key'      => $import_members_key,
-			'title'    => __( 'Import ASA Members', 'asamp' ),
+			'title'    => __( 'Import Members', 'asamp' ),
 			'topmenu'  => 'users.php',
 			'resettxt' => '',
 			'boxes'    => $this->import_members_add_boxes( $import_members_key ),
 			'menuargs' => array(
-				'menu_title'      => __( 'Import ASA Members', 'asamp' ),
+				'menu_title'      => __( 'Import Members', 'asamp' ),
 				'capability'      => 'manage_options',
 				'view_capability' => 'manage_options',
 			),
 		) );
+	}
+
+	/**
+	 * Adds tabs to the plugin options page.
+	 *
+	 * @return array $tabs
+	 */
+	private function options_add_tabs() {
+		$tabs = array();
+
+		$tabs[ 'general' ] = array(
+			'priority' => 10,
+			'name'     => __( 'General', 'asamp' ),
+		);
+		$tabs[ 'payment' ] = array(
+			'priority' => 20,
+			'name'     => __( 'Payment', 'asamp' ),
+		);
+		$tabs[ 'usage' ] = array(
+			'priority' => 30,
+			'name'     => __( 'Usage', 'asamp' ),
+		);
+
+		$tabs = apply_filters( $this->td . '_options_tabs', $tabs );
+		
+		return $tabs;
 	}
 
 	/**
@@ -2446,353 +2446,338 @@ class ASA_Member_Portal {
 	 * - the ['show_on'] property is configured
 	 * - a call to object_type method
 	 *
-	 * @param  string $options_key
-	 *
 	 * @return array $boxes
 	 */
-	private function options_add_boxes( $options_key ) {
-		//holds all CMB2 box objects
+	private function options_add_boxes() {
 		$boxes = array();
 		
-		//add this to all boxes
-		$show_on = array(
-			'key'   => 'options-page',
-			'value' => array( $options_key ),
+		$boxes[ 'registration' ] = array(
+			'priority' => 10,
+			'title'    => __( 'Profile/Registration', 'asamp' ),
+			'tab'      => 'general',
+			'fields'   => array(
+				'state_default' => array(
+					'priority'        => 100,
+					'name'            => __( 'Default State', 'asamp' ),
+					'desc'            => __( 'Which State should be selected by default on the registration form?', 'asamp' ),
+					'type'            => 'select',
+					'options'         => 'get_us_states_array',
+				),
+				'num_contacts' => array(
+					'priority'        => 120,
+					'name'            => __( 'Number of Contacts Allowed', 'asamp' ),
+					'desc'            => __( 'Please be careful. If a user already has multiple contacts, then you decrease this to a number that is lower than what they have, some of their contacts may disappear.', 'asamp' ),
+					'type'            => 'text',
+					'sanitization_cb' => 'absint',
+					'default'         => 'opt_num_contacts',
+					'attributes'      => array(
+						'type' => 'number',
+						'min'  => 0,
+					),
+				),
+				'trades' => array(
+					'priority'        => 140,
+					'name'            => __( 'Trades', 'asamp' ),
+					'desc'            => __( 'Add one trade per line. Please be careful. If a user already has a trade selected, then you remove the trade, their selection for that trade may be lost.', 'asamp' ),
+					'type'            => 'textarea',
+					'default'         => 'opt_trades_array',
+				),
+				'trades_other' => array(
+					'priority'        => 160,
+					'name'            => __( 'Include "Other" Trades Option', 'asamp' ),
+					'desc'            => __( 'Please be careful. If a user already has any "Other Trades" saved, then you remove the "Other Trade" option, their "Other Trades" may be lost.', 'asamp' ),
+					'type'            => 'radio_inline',
+					'default'         => 'yes',
+					'options'         => array(
+						'yes' => __( 'Yes', 'asamp' ),
+						'no'  => __( 'No',  'asamp' ),
+					),
+				),
+				'google_recaptcha_site_key' => array(
+					'priority'        => 180,
+					'name'            => __( 'Google reCAPTCHA Site Key', 'asamp' ),
+					'type'            => 'text',
+				),
+				'google_recaptcha_secret_key' => array(
+					'priority'        => 200,
+					'name'            => __( 'Google reCAPTCHA Secret Key', 'asamp' ),
+					'type'            => 'text',
+				),
+				'member_type_label' => array(
+					'priority'        => 220,
+					'name'            => __( 'Member Type Label', 'asamp' ),
+					'type'            => 'text',
+					'default'         => 'opt_member_type_label',
+				),
+				'member_types' => array(
+					'priority'        => 240,
+					'name'            => __( 'Member Type(s)', 'asamp' ),
+					'desc'            => __( 'Please be careful. If a user is already set as a certain member type, then you remove that type, their entire user account may be lost.', 'asamp' ),
+					'type'            => 'group',
+					'options'         => array(
+						'sortable'      => true,
+						'group_title'   => 'Member Type #{#}',
+						'add_button'    => __( 'Add Member Type',    'asamp' ),
+						'remove_button' => __( 'Remove Member Type', 'asamp' ),
+					),
+				),
+				'name' => array(
+					'priority'        => 260,
+					'parent'          => 'member_types',
+					'name'            => __( 'Name', 'asamp' ),
+					'type'            => 'text',
+					'default'         => 'opt_member_type_name',
+					'attributes'      => array(
+						'required' => 'required',
+					),
+				),
+				'dues' => array(
+					'priority'        => 280,
+					'parent'          => 'member_types',
+					'name'            => __( 'Dues Amount', 'asamp' ),
+					'type'            => 'text_money',
+					'default'         => 'opt_member_type_dues',
+					'attributes'      => array(
+						'required' => 'required',
+					),
+				),
+			),
 		);
 
-		//some default values
-		$admin_name  = get_bloginfo( 'name' );
-		$admin_email = get_bloginfo( 'admin_email' );
-		
-		$cmb = new_cmb2_box( array(
-			'id'              => 'registration',
-			'title'           => __( 'Profile/Registration', 'asamp' ),
-			'show_on'         => $show_on,
-			'display_cb'      => false,
-			'admin_menu_hook' => false,
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Default State', 'asamp' ),
-			'desc'            => __( 'Which State should be selected by default on the registration form?', 'asamp' ),
-			'id'              => 'state_default',
-			'type'            => 'select',
-			'options'         => $this->get_us_states_array(),
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Number of Contacts Allowed', 'asamp' ),
-			'desc'            => __( 'Please be careful. If a user already has multiple contacts, then you decrease this to a number that is lower than what they have, some of their contacts may disappear.', 'asamp' ),
-			'id'              => 'num_contacts',
-			'type'            => 'text',
-			'sanitization_cb' => 'absint',
-			'default'         => $this->get_default_num_contacts(),
-			'attributes'      => array(
-				'type'    => 'number',
-				'pattern' => '\d*',
-				'min'     => 0,
+		$boxes[ 'directory' ] = array(
+			'priority' => 20,
+			'title'    => __( 'Member Directory', 'asamp' ),
+			'tab'      => 'general',
+			'fields'   => array(
+				'profiles_public' => array(
+					'priority'      => 10,
+					'name'          => __( 'Member Info Security', 'asamp' ),
+					'desc'          => __( 'Choose amount of member info to show to non-members.', 'asamp' ),
+					'type'          => 'radio_inline',
+					'default'       => 'basic',
+					'options'       => array(
+						'all'   => __( 'All',   'asamp' ),
+						'basic' => __( 'Basic', 'asamp' ),
+						'none'  => __( 'None',  'asamp' ),
+					),
+				),
+				'members_grouped_by_type' => array(
+					'priority'      => 20,
+					'name'          => __( 'List Member Types Grouped Separately', 'asamp' ),
+					'type'          => 'radio_inline',
+					'default'       => 'yes',
+					'options'       => array(
+						'yes' => __( 'Yes', 'asamp' ),
+						'no'  => __( 'No',  'asamp' ),
+					),
+				),
 			),
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Trades', 'asamp' ),
-			'desc'            => __( 'Add one trade per line. Please be careful. If a user already has a trade selected, then you remove the trade, their selection for that trade may be lost.', 'asamp' ),
-			'id'              => 'trades',
-			'type'            => 'textarea',
-			'default'         => function(){
-				$r = $this->get_default_trades_array();
-				$trades = '';
-				foreach ( $r as $v ) {
-					$trades .= $v . "\r\n";
-				}
-				return rtrim( $trades, "\r\n" );
-			},
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Include "Other" Trades Option', 'asamp' ),
-			'desc'            => __( 'Please be careful. If a user already has any "Other Trades" saved, then you remove the "Other Trade" option, their "Other Trades" may be lost.', 'asamp' ),
-			'id'              => 'trades_other',
-			'type'            => 'radio_inline',
-			'default'         => 'yes',
-			'options' => array(
-				'yes' => __( 'Yes', 'asamp' ),
-				'no'  => __( 'No',  'asamp' ),
-			),
-		) );
-		//$has_recaptcha = get_option( 'gglcptch_options' );
-		//if ( empty( $has_recaptcha[ 'public_key' ] ) && empty( $has_recaptcha[ 'private_key' ] ) ) {
-			$cmb->add_field( array(
-				'name'            => __( 'Google reCAPTCHA Site Key', 'asamp' ),
-				'id'              => 'google_recaptcha_site_key',
-				'type'            => 'text',
-			) );
-			$cmb->add_field( array(
-				'name'            => __( 'Google reCAPTCHA Secret Key', 'asamp' ),
-				'id'              => 'google_recaptcha_secret_key',
-				'type'            => 'text',
-			) );
-		//}
-		$cmb->add_field( array(
-			'name'            => __( 'Member Type Label', 'asamp' ),
-			'id'              => 'member_type_label',
-			'type'            => 'text',
-			'default'         => $this->get_default_member_type_label(),
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Member Type(s)', 'asamp' ),
-			'desc'            => __( 'Please be careful. If a user is already set as a certain member type, then you remove that type, their entire user account may be lost.', 'asamp' ),
-			'id'              => 'member_types',
-			'type'            => 'group',
-			'options'         => array(
-				'sortable'      => true,
-				'group_title'   => 'Member Type #{#}',
-				'add_button'    => __( 'Add Member Type',    'asamp' ),
-				'remove_button' => __( 'Remove Member Type', 'asamp' ),
-			),
-		) );
-		$cmb->add_group_field( 'member_types', array(
-			'name'            => __( 'Name', 'asamp' ),
-			'id'              => 'name',
-			'type'            => 'text',
-			'default'         => $this->get_default_member_type_name(),
-			'attributes'      => array(
-				'required' => 'required',
-			),
-		) );
-		$cmb->add_group_field( 'member_types', array(
-			'name'            => __( 'Dues Amount', 'asamp' ),
-			'id'              => 'dues',
-			'type'            => 'text_money',
-			'default'         => $this->get_default_member_type_dues(),
-			'attributes'      => array(
-				'required' => 'required',
-			),
-		) );
-		$cmb->object_type( 'options-page' );
-		$boxes[] = $cmb;
-		
-		$cmb = new_cmb2_box( array(
-			'id'              => 'directory',
-			'title'           => __( 'Member Directory', 'asamp' ),
-			'show_on'         => $show_on,
-			'display_cb'      => false,
-			'admin_menu_hook' => false,
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Member Info Security', 'asamp' ),
-			'desc'            => __( 'Choose amount of member info to show to non-members.', 'asamp' ),
-			'id'              => 'profiles_public',
-			'type'            => 'radio_inline',
-			'default'         => 'basic',
-			'options'         => array(
-				'all'   => __( 'All',   'asamp' ),
-				'basic' => __( 'Basic', 'asamp' ),
-				'none'  => __( 'None',  'asamp' ),
-			),
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'List Member Types Grouped Separately', 'asamp' ),
-			'id'              => 'members_grouped_by_type',
-			'type'            => 'radio_inline',
-			'default'         => 'yes',
-			'options' => array(
-				'yes' => __( 'Yes', 'asamp' ),
-				'no'  => __( 'No',  'asamp' ),
-			),
-		) );
-		$cmb->object_type( 'options-page' );
-		$boxes[] = $cmb;
-		
-		$cmb = new_cmb2_box( array(
-			'id'              => 'map',
-			'title'           => __( 'Member Map', 'asamp' ),
-			'show_on'         => $show_on,
-			'display_cb'      => false,
-			'admin_menu_hook' => false,
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Google Maps API Key', 'asamp' ),
-			'id'              => 'google_maps_api_key',
-			'type'            => 'text',
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Latitude', 'asamp' ),
-			'id'              => 'google_maps_center_lat',
-			'type'            => 'text',
-			'default'         => '37.09024',
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Longitude', 'asamp' ),
-			'id'              => 'google_maps_center_lng',
-			'type'            => 'text',
-			'default'         => '-95.712891',
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Zoom', 'asamp' ),
-			'id'              => 'google_maps_default_zoom',
-			'type'            => 'text',
-			'default'         => 4,
-			'attributes'      => array(
-				'type'    => 'number',
-				'min'     => 1,
-				'max'     => 21,
-			),
-		) );
-		$cmb->object_type( 'options-page' );
-		$boxes[] = $cmb;
-		
-		$cmb = new_cmb2_box( array(
-			'id'              => 'pages',
-			'title'           => __( 'Pages', 'asamp' ),
-			'show_on'         => $show_on,
-			'display_cb'      => false,
-			'admin_menu_hook' => false,
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Profile/Registration Form', 'asamp' ),
-			'desc'            => __( 'The page that contains the shortcode: [asamp_member_profile]', 'asamp' ),
-			'id'              => 'page_profile',
-			'type'            => 'select',
-			'options'         => $this->get_pages_array(),
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Payment Form', 'asamp' ),
-			'desc'            => __( 'The page that contains the shortcode: [asamp_member_payment_form]', 'asamp' ),
-			'id'              => 'page_payment_form',
-			'type'            => 'select',
-			'options'         => $this->get_pages_array(),
-		) );
-		$cmb->object_type( 'options-page' );
-		$boxes[] = $cmb;
-		
-		$cmb = new_cmb2_box( array(
-			'id'              => 'administration',
-			'title'           => __( 'Administration', 'asamp' ),
-			'show_on'         => $show_on,
-			'display_cb'      => false,
-			'admin_menu_hook' => false,
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Admin Contact(s)', 'asamp' ),
-			'desc'            => __( 'Send all emails generated by this plugin to the following recipients.', 'asamp' ),
-			'id'              => 'admin_contacts',
-			'type'            => 'group',
-			'options'         => array(
-				'sortable'      => true,
-				'group_title'   => 'Contact #{#}',
-				'add_button'    => __( 'Add Contact',    'asamp' ),
-				'remove_button' => __( 'Remove Contact', 'asamp' ),
-			),
-		) );
-		$cmb->add_group_field( 'admin_contacts', array(
-			'name'            => __( 'Name', 'asamp' ),
-			'id'              => 'name',
-			'type'            => 'text',
-			'default'         => $admin_name,
-			'attributes'      => array(
-				'required' => 'required',
-			),
-		) );
-		$cmb->add_group_field( 'admin_contacts', array(
-			'name'            => __( 'Address', 'asamp' ),
-			'id'              => 'email',
-			'type'            => 'text_email',
-			'default'         => $admin_email,
-			'attributes'      => array(
-				'required' => 'required',
-			),
-		) );
-		$cmb->add_group_field( 'admin_contacts', array(
-			'name'            => __( 'Type', 'asamp' ),
-			'id'              => 'type',
-			'type'            => 'radio_inline',
-			'default'         => 'to',
-			'options'         => array(
-				'to'  => __( 'To',  'asamp' ),
-				'cc'  => __( 'CC',  'asamp' ),
-				'bcc' => __( 'BCC', 'asamp' ),
-			),
-		) );
-		$cmb->object_type( 'options-page' );
-		$boxes[] = $cmb;
-		
-		$cmb = new_cmb2_box( array(
-			'id'              => 'payment_PayPal_Pro',
-			'title'           => __( 'PayPal Pro', 'asamp' ),
-			'show_on'         => $show_on,
-			'display_cb'      => false,
-			'admin_menu_hook' => false,
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'PayPal Pro Enabled', 'asamp' ),
-			'id'              => 'payment_PayPal_Pro_enabled',
-			'type'            => 'radio_inline',
-			'default'         => 'no',
-			'options' => array(
-				'yes' => __( 'Yes', 'asamp' ),
-				'no'  => __( 'No',  'asamp' ),
-			),
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'PayPal Pro API Username', 'asamp' ),
-			'id'              => 'payment_PayPal_Pro_username',
-			'type'            => 'text',
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'PayPal Pro API Password', 'asamp' ),
-			'id'              => 'payment_PayPal_Pro_password',
-			'type'            => 'text',
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'PayPal Pro API Signature', 'asamp' ),
-			'id'              => 'payment_PayPal_Pro_signature',
-			'type'            => 'text',
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Use PayPal Pro in Test Mode', 'asamp' ),
-			'id'              => 'payment_PayPal_Pro_testMode',
-			'type'            => 'checkbox',
-		) );
-		$cmb->object_type( 'options-page' );
-		$boxes[] = $cmb;
-		
-		$cmb = new_cmb2_box( array(
-			'id'              => 'payment_Stripe',
-			'title'           => __( 'Stripe', 'asamp' ),
-			'show_on'         => $show_on,
-			'display_cb'      => false,
-			'admin_menu_hook' => false,
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Stripe Enabled', 'asamp' ),
-			'id'              => 'payment_Stripe_enabled',
-			'type'            => 'radio_inline',
-			'default'         => 'no',
-			'options' => array(
-				'yes' => __( 'Yes', 'asamp' ),
-				'no'  => __( 'No',  'asamp' ),
-			),
-		) );
-		$cmb->add_field( array(
-			'name'            => __( 'Stripe API Key', 'asamp' ),
-			'id'              => 'payment_Stripe_apiKey',
-			'type'            => 'text',
-		) );
-		$cmb->object_type( 'options-page' );
-		$boxes[] = $cmb;
+		);
 
-		$cmb = new_cmb2_box( array(
-			'id'              => 'instructions',
-			'title'           => __( 'Usage Instructions', 'asamp' ),
-			'show_on'         => $show_on,
-			'display_cb'      => false,
-			'admin_menu_hook' => false,
-		) );
-		$cmb->add_field( array(
-				'name'            => __( 'Usage Instructions', 'asamp' ),
-				'id'              => 'usage_instructions',
-				'type'            => 'title',
-				'render_row_cb'   => array( $this, 'usage_instructions' ),
-			) );
-		$cmb->object_type( 'options-page' );
-		$boxes[] = $cmb;
+		$boxes[ 'map' ] = array(
+			'priority' => 30,
+			'title'    => __( 'Member Map', 'asamp' ),
+			'tab'      => 'general',
+			'fields'   => array(
+				'google_maps_api_key' => array(
+					'priority'      => 10,
+					'name'          => __( 'Google Maps API Key', 'asamp' ),
+					'type'          => 'text',
+				),
+				'google_maps_center_lat' => array(
+					'priority'      => 20,
+					'name'          => __( 'Latitude', 'asamp' ),
+					'type'          => 'text',
+					'default'       => '37.09024',
+				),
+				'google_maps_center_lng' => array(
+					'priority'      => 30,
+					'name'          => __( 'Longitude', 'asamp' ),
+					'type'          => 'text',
+					'default'       => '-95.712891',
+				),
+				'google_maps_default_zoom' => array(
+					'priority'      => 40,
+					'name'          => __( 'Zoom', 'asamp' ),
+					'type'          => 'text',
+					'default'       => 4,
+					'attributes'    => array(
+						'type' => 'number',
+						'min'  => 1,
+						'max'  => 21,
+					),
+				),
+			),
+		);
+
+		$boxes[ 'pages' ] = array(
+			'priority' => 40,
+			'title'    => __( 'Pages', 'asamp' ),
+			'tab'      => 'general',
+			'fields'   => array(
+				'page_profile' => array(
+					'priority'      => 10,
+					'name'          => __( 'Profile/Registration Form', 'asamp' ),
+					'desc'          => __( 'The page that contains the shortcode: [asamp_member_profile]', 'asamp' ),
+					'type'          => 'select',
+					'options'       => 'get_pages_array',
+				),
+				'page_payment_form' => array(
+					'priority'      => 20,
+					'name'          => __( 'Payment Form', 'asamp' ),
+					'desc'          => __( 'The page that contains the shortcode: [asamp_member_payment_form]', 'asamp' ),
+					'type'          => 'select',
+					'options'       => 'get_pages_array',
+				),
+			),
+		);
+
+		$boxes[ 'administration' ] = array(
+			'priority' => 50,
+			'title'    => __( 'Administration', 'asamp' ),
+			'tab'      => 'general',
+			'fields'   => array(
+				'admin_contacts' => array(
+					'priority'      => 10,
+					'name'          => __( 'Admin Contact(s)', 'asamp' ),
+					'desc'          => __( 'Send all emails generated by this plugin to the following recipients.', 'asamp' ),
+					'type'          => 'group',
+					'options'       => array(
+						'sortable'      => true,
+						'group_title'   => 'Contact #{#}',
+						'add_button'    => __( 'Add Contact',    'asamp' ),
+						'remove_button' => __( 'Remove Contact', 'asamp' ),
+					),
+				),
+				'name' => array(
+					'priority'      => 20,
+					'parent'        => 'admin_contacts',
+					'name'          => __( 'Name', 'asamp' ),
+					'type'          => 'text',
+					'default'       => get_bloginfo( 'name' ),
+					'attributes'    => array(
+						'required' => 'required',
+					),
+				),
+				'email' => array(
+					'priority'      => 30,
+					'parent'        => 'admin_contacts',
+					'name'          => __( 'Address', 'asamp' ),
+					'type'          => 'text_email',
+					'default'       => get_bloginfo( 'admin_email' ),
+					'attributes'    => array(
+						'required' => 'required',
+					),
+				),
+				'type' => array(
+					'priority'      => 40,
+					'parent'        => 'admin_contacts',
+					'name'          => __( 'Type', 'asamp' ),
+					'type'          => 'radio_inline',
+					'default'       => 'to',
+					'options'         => array(
+						'to'  => __( 'To',  'asamp' ),
+						'cc'  => __( 'CC',  'asamp' ),
+						'bcc' => __( 'BCC', 'asamp' ),
+					),
+				),
+			),
+		);
+
+		$boxes[ 'payment_PayPal_Pro' ] = array(
+			'priority' => 60,
+			'title'    => __( 'PayPal Pro', 'asamp' ),
+			'tab'      => 'payment',
+			'fields'   => array(
+				'payment_PayPal_Pro_enabled' => array(
+					'priority'      => 10,
+					'name'          => __( 'PayPal Pro Enabled', 'asamp' ),
+					'type'          => 'radio_inline',
+					'default'       => 'no',
+					'options'       => array(
+						'yes' => __( 'Yes', 'asamp' ),
+						'no'  => __( 'No',  'asamp' ),
+					),
+				),
+				'payment_PayPal_Pro_username' => array(
+					'priority'      => 20,
+					'name'          => __( 'PayPal Pro API Username', 'asamp' ),
+					'type'          => 'text',
+				),
+				'payment_PayPal_Pro_password' => array(
+					'priority'      => 30,
+					'name'          => __( 'PayPal Pro API Password', 'asamp' ),
+					'type'          => 'text',
+				),
+				'payment_PayPal_Pro_signature' => array(
+					'priority'      => 40,
+					'name'          => __( 'PayPal Pro API Signature', 'asamp' ),
+					'type'          => 'text',
+				),
+				'payment_PayPal_Pro_testMode' => array(
+					'priority'      => 50,
+					'name'          => __( 'Use PayPal Pro in Test Mode', 'asamp' ),
+					'type'          => 'checkbox',
+				),
+			),
+		);
+
+		$boxes[ 'payment_Stripe' ] = array(
+			'priority' => 70,
+			'title'    => __( 'Stripe', 'asamp' ),
+			'tab'      => 'payment',
+			'fields'   => array(
+				'payment_Stripe_enabled' => array(
+					'priority'      => 10,
+					'name'          => __( 'Stripe Enabled', 'asamp' ),
+					'type'          => 'radio_inline',
+					'default'       => 'no',
+					'options'       => array(
+						'yes' => __( 'Yes', 'asamp' ),
+						'no'  => __( 'No',  'asamp' ),
+					),
+				),
+				'payment_Stripe_apiKey' => array(
+					'priority'      => 20,
+					'name'          => __( 'Stripe API Key', 'asamp' ),
+					'type'          => 'text',
+				),
+			),
+		);
+
+		$boxes[ 'instructions' ] = array(
+			'priority' => 80,
+			'title'    => __( 'Usage Instructions', 'asamp' ),
+			'tab'      => 'usage',
+			'fields'   => array(
+				'usage_instructions' => array(
+					'priority'      => 10,
+					'name'          => __( 'Usage Instructions', 'asamp' ),
+					'type'          => 'title',
+					'render_row_cb' => 'usage_instructions',
+				),
+			),
+		);
+
+		$boxes = apply_filters( $this->td . '_options', $boxes );
+
+		foreach ( $boxes as $id => $box ) {
+			add_filter( $this->td . '_options_tabs', function(){
+				$tabs[ $box[ 'tab' ] ][ 'boxes' ][] = $id;
+			} );
+
+			$box[ 'id' ]              = $id;
+			$box[ 'display_cb' ]      = false;
+			$box[ 'admin_menu_hook' ] = false;
+			$box[ 'show_on' ]         = array(
+				'key'   => 'options-page',
+				'value' => array( $this->td . '_options' ),
+			);
+
+			$boxes[ $id ] = $this->build_box( $box, $box[ 'fields' ] );
+
+			$boxes[ $id ]->object_type( 'options-page' );
+		}
 		
 		return $boxes;
 	}
@@ -2855,7 +2840,7 @@ class ASA_Member_Portal {
 	 */
 	public function user_meta_init() {
 		$fields = array();
-		$fields = apply_filters( $this->td . '_user_meta_fields', $fields );
+		$fields = apply_filters( $this->td . '_user_meta', $fields );
 		uasort( $fields, function( $a, $b ){
 			return $a[ 'priority' ] - $b[ 'priority' ];
 		} );
@@ -2879,7 +2864,7 @@ class ASA_Member_Portal {
 	 *
 	 * @return void
 	 */
-	private function build_box( $box, $fields, $key ) {
+	private function build_box( $box, $fields, $key = '' ) {
 		$box->add_hidden_field( array(
 			'field_args'  => array(
 				'id'      => $key . 'nonce',
@@ -2925,6 +2910,8 @@ class ASA_Member_Portal {
 				if ( 'group' === $field[ 'type' ] ) $group_ids[ $id ] = $field_id;
 			}
 		}
+
+		return $box;
 	}
 
 	/**
@@ -3069,13 +3056,13 @@ class ASAMP_One_Time_Notices {
 
 }
 
-add_filter( 'asamp_user_meta_options', 'asamp_asa_specific_options' );
+add_filter( 'asamp_options', 'asamp_asa_specific_options' );
 function asamp_asa_specific_options( $options ) {
 	return $options;
 }
 
-add_filter( 'asamp_user_meta_fields', 'asamp_asa_specific_fields' );
-function asamp_asa_specific_fields( $fields ) {
+add_filter( 'asamp_user_meta', 'asamp_asa_specific_user_meta' );
+function asamp_asa_specific_user_meta( $fields ) {
 	$fields[ 'member_status' ] = array(
 		'export'          => true,
 		'priority'        => 100,
@@ -3088,6 +3075,7 @@ function asamp_asa_specific_fields( $fields ) {
 			'inactive' => __( 'Inactive', 'asamp' ),
 		),
 	);
+
 	$fields[ 'member_date_joined' ] = array(
 		'export'          => true,
 		'priority'        => 120,
@@ -3097,6 +3085,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'visibility'      => array( 'admin' ),
 		'date_format'     => 'Y-m-d',
 	);
+
 	$fields[ 'member_expiry' ] = array(
 		'export'          => true,
 		'priority'        => 140,
@@ -3106,6 +3095,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'visibility'      => array( 'admin' ),
 		'date_format'     => 'Y-m-d',
 	);
+
 	$fields[ 'form_title' ] = array(
 		'priority'        => 160,
 		'name'            => array(
@@ -3116,6 +3106,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'type'            => 'title',
 		'render_row_cb'   => 'form_heading',
 	);
+
 	$fields[ 'section_company_info' ] = array(
 		'priority'        => 180,
 		'name'            => __( 'Company Info', 'asamp' ),
@@ -3123,6 +3114,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'visibility'      => array( 'member', 'non-member' ),
 		'render_row_cb'   => 'open_fieldset',
 	);
+
 	$fields[ 'company_name' ] = array(
 		'export'          => true,
 		'priority'        => 200,
@@ -3132,24 +3124,28 @@ function asamp_asa_specific_fields( $fields ) {
 			'required' => 'required',
 		),
 	);
+
 	$fields[ 'company_description' ] = array(
 		'export'          => true,
 		'priority'        => 220,
 		'name'            => __( 'Company Description', 'asamp' ),
 		'type'            => 'textarea',
 	);
+
 	$fields[ 'company_street' ] = array(
 		'export'          => true,
 		'priority'        => 240,
 		'name'            => __( 'Company Address', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'company_city' ] = array(
 		'export'          => true,
 		'priority'        => 260,
 		'name'            => __( 'City', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'company_state' ] = array(
 		'export'          => true,
 		'priority'        => 280,
@@ -3161,24 +3157,28 @@ function asamp_asa_specific_fields( $fields ) {
 			'required' => 'required',
 		),
 	);
+
 	$fields[ 'company_zip' ] = array(
 		'export'          => true,
 		'priority'        => 300,
 		'name'            => __( 'Zip', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'company_phone' ] = array(
 		'export'          => true,
 		'priority'        => 320,
 		'name'            => __( 'Company Phone', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'company_fax' ] = array(
 		'export'          => true,
 		'priority'        => 340,
 		'name'            => __( 'Company Fax', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'company_email' ] = array(
 		'export'          => true,
 		'priority'        => 360,
@@ -3188,6 +3188,7 @@ function asamp_asa_specific_fields( $fields ) {
 			'required' => 'required',
 		),
 	);
+
 	$fields[ 'company_logo' ] = array(
 		'priority'        => 380,
 		'name'            => __( 'Company Logo', 'asamp' ),
@@ -3197,6 +3198,7 @@ function asamp_asa_specific_fields( $fields ) {
 			'type' => 'file',
 		),
 	);
+
 	$fields[ 'company_website' ] = array(
 		'export'          => true,
 		'priority'        => 400,
@@ -3204,6 +3206,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'type'            => 'text_url',
 		'protocols'       => array( 'http', 'https' ),
 	);
+
 	$fields[ 'company_year_founded' ] = array(
 		'export'          => true,
 		'priority'        => 420,
@@ -3213,6 +3216,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'options'         => 'get_year_founded_array',
 		'sanitization_cb' => 'absint',
 	);
+
 	$fields[ 'company_num_employees' ] = array(
 		'export'          => true,
 		'priority'        => 440,
@@ -3225,6 +3229,7 @@ function asamp_asa_specific_fields( $fields ) {
 			'min'     => 1,
 		),
 	);
+
 	$fields[ 'company_business_type' ] = array(
 		'export'          => true,
 		'priority'        => 460,
@@ -3232,6 +3237,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'type'            => 'multicheck_inline',
 		'options'         => 'get_trades_array',
 	);
+
 	$fields[ 'company_business_type_other' ] = array(
 		'export'          => true,
 		'priority'        => 480,
@@ -3253,6 +3259,7 @@ function asamp_asa_specific_fields( $fields ) {
 			'add_row_text' => __( 'Add Another "Other" Type/Trade', 'asamp' ),
 		),
 	);
+
 	$fields[ 'section_company_contacts' ] = array(
 		'priority'        => 500,
 		'name'            => __( 'Contacts', 'asamp' ),
@@ -3260,6 +3267,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'visibility'      => array( 'member', 'non-member' ),
 		'render_row_cb'   => 'open_fieldset',
 	);
+
 	$fields[ 'company_contacts' ] = array(
 		'export'          => true,
 		'priority'        => 520,
@@ -3271,6 +3279,7 @@ function asamp_asa_specific_fields( $fields ) {
 			'sortable'      => true,
 		),
 	);
+
 	$fields[ 'name_first' ] = array(
 		'export'          => true,
 		'priority'        => 540,
@@ -3278,6 +3287,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'name'            => __( 'First Name', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'name_last' ] = array(
 		'export'          => true,
 		'priority'        => 560,
@@ -3285,6 +3295,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'name'            => __( 'Last Name', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'phone' ] = array(
 		'export'          => true,
 		'priority'        => 580,
@@ -3292,6 +3303,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'name'            => __( 'Phone', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'fax' ] = array(
 		'export'          => true,
 		'priority'        => 600,
@@ -3299,6 +3311,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'name'            => __( 'Fax', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'email' ] = array(
 		'export'          => true,
 		'priority'        => 620,
@@ -3306,6 +3319,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'name'            => __( 'Email', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'title' ] = array(
 		'export'          => true,
 		'priority'        => 640,
@@ -3313,6 +3327,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'name'            => __( 'Title', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'asa_position' ] = array(
 		'export'          => true,
 		'priority'        => 660,
@@ -3320,6 +3335,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'name'            => __( 'ASA Position', 'asamp' ),
 		'type'            => 'text',
 	);
+
 	$fields[ 'section_member_type' ] = array(
 		'priority'        => 680,
 		'name'            => __( 'Membership', 'asamp' ),
@@ -3327,6 +3343,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'visibility'      => array( 'non-member' ),
 		'render_row_cb'   => 'open_fieldset',
 	);
+
 	$fields[ 'member_type' ] = array(
 		'export'          => true,
 		'priority'        => 700,
@@ -3335,6 +3352,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'visibility'      => array( 'non-member' ),
 		'options'         => 'get_asamp_roles_select_with_price',
 	);
+
 	$fields[ 'section_login_info' ] = array(
 		'priority'        => 720,
 		'name'            => array(
@@ -3345,6 +3363,7 @@ function asamp_asa_specific_fields( $fields ) {
 		'visibility'      => array( 'member', 'non-member' ),
 		'render_row_cb'   => 'open_fieldset',
 	);
+
 	$fields[ 'login' ] = array(
 		'export'          => true,
 		'priority'        => 740,
@@ -3355,6 +3374,7 @@ function asamp_asa_specific_fields( $fields ) {
 			'required' => 'required',
 		),
 	);
+
 	$fields[ 'pass' ] = array(
 		'export'          => true,
 		'priority'        => 760,
@@ -3369,6 +3389,7 @@ function asamp_asa_specific_fields( $fields ) {
 			'required' => 'required',
 		),
 	);
+
 	$fields[ 'pass_confirm' ] = array(
 		'priority'        => 780,
 		'name'            => __( 'Confirm Password', 'asamp' ),
@@ -3379,6 +3400,7 @@ function asamp_asa_specific_fields( $fields ) {
 			'required' => 'required',
 		),
 	);
+
 	$fields[ 'section_end_form' ] = array(
 		'priority'        => 800,
 		'name'            => __( 'End Form', 'asamp' ),
