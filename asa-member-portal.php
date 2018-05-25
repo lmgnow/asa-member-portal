@@ -24,7 +24,7 @@ class ASA_Member_Portal {
 	private $version          = '1.1.7';      // str             Current version.
 	private $td               = 'asamp';      // str             Text Domain.
 	private $pu               = '_user_';     // str             Prefix for user meta fields.
-	private $view             = 'non-member'; // str             Prefix for user meta fields.
+	private $viewer           = 'non-member'; // str             Current page viewer type.
 	private $plugin_file_path = '';           // str             Absolute path to this file.      (with trailing slash)
 	private $plugin_dir_path  = '';           // str             Absolute path to this directory. (with trailing slash)
 	private $plugin_dir_url   = '';           // str             URL of this directory.           (with trailing slash)
@@ -46,6 +46,7 @@ class ASA_Member_Portal {
 		$this->plugin_dir_path  = plugin_dir_path( $this->plugin_file_path );
 		$this->plugin_dir_url   = plugin_dir_url(  $this->plugin_file_path );
 		$this->pu               = $this->td . $this->pu;
+		$this->viewer           = is_admin() ? 'admin' : 'non-member';
 		$this->notices          = new ASAMP_One_Time_Notices();
 
 		require_once $this->plugin_dir_path . 'includes/vendor/autoload.php';
@@ -175,7 +176,7 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function disallow_dashboard_access() {
-		if ( is_admin() && $this->is_member() && $this->get_member_role() ) {
+		if ( 'admin' === $this->viewer() && $this->is_member() && $this->get_member_role() ) {
 			$pp = ! empty( $this->options[ 'page_profile' ] ) ? get_the_permalink( $this->options[ 'page_profile' ] ) : home_url();
 			wp_redirect( $pp );
 			exit();
@@ -1128,6 +1129,17 @@ class ASA_Member_Portal {
 	}
 
 	/**
+	 * TODO write docs
+	 *
+	 * @return str $this->viewer
+	 */
+	private function viewer() {
+		if ( 'admin'  === $this->viewer                       ) return $this->viewer;
+		if ( 'member' === $this->viewer || $this->is_member() ) return $this->viewer = 'member';
+		return $this->viewer;
+	}
+
+	/**
 	 * Checks which form is being handled.
 	 *
 	 * @param string $key
@@ -1139,7 +1151,7 @@ class ASA_Member_Portal {
 		if ( empty( $_POST ) )                                          return false;
 		if ( ! isset( $_POST[ 'submit-cmb' ], $_POST[ 'object_id' ] ) ) return false;
 		if ( ! wp_verify_nonce( $_POST[ $key ], $key ) )                return false;
-		if ( is_admin() )                                               return false;
+		if ( 'admin' === $this->viewer() )                              return false;
 
 		return true;
 	}
@@ -2003,80 +2015,6 @@ class ASA_Member_Portal {
 	}
 
 	/**
-	 * Adds tabs to the plugin options page.
-	 *
-	 * @return array $tabs
-	 */
-	private function options_add_tabs() {
-		$tabs = array(
-			array(
-				'id'    => 'general',
-				'title' => __( 'General', 'asamp' ),
-				'boxes' => array(
-					'registration',
-					'directory',
-					'map',
-					'pages',
-					'administration',
-				),
-			),
-			array(
-				'id'    => 'payment',
-				'title' => __( 'Payment', 'asamp' ),
-				'boxes' => array(
-					'payment_PayPal_Pro',
-					'payment_Stripe',
-				),
-			),
-			array(
-				'id'    => 'usage',
-				'title' => __( 'Usage', 'asamp' ),
-				'boxes' => array(
-					'instructions',
-				),
-			),
-		);
-		
-		return $tabs;
-	}
-
-	/**
-	 * Adds plugin options.
-	 *
-	 * @return void
-	 */
-	public function options_init() {
-		$options_key = 'asa_member_portal';
-		new Cmb2_Metatabs_Options( array(
-			'key'      => $options_key,
-			'title'    => __( 'ASA Member Portal Settings', 'asamp' ),
-			'topmenu'  => 'options-general.php',
-			'resettxt' => ''/*__( 'Restore Defaults', 'asamp' )*/,
-			'boxes'    => $this->options_add_boxes( $options_key ),
-			'tabs'     => $this->options_add_tabs(),
-			'menuargs' => array(
-				'menu_title'      => __( 'ASA Membership', 'asamp' ),
-				'capability'      => 'manage_options',
-				'view_capability' => 'manage_options',
-			),
-		) );
-
-		$import_members_key = 'asa_member_portal_import_members';
-		new Cmb2_Metatabs_Options( array(
-			'key'      => $import_members_key,
-			'title'    => __( 'Import ASA Members', 'asamp' ),
-			'topmenu'  => 'users.php',
-			'resettxt' => '',
-			'boxes'    => $this->import_members_add_boxes( $import_members_key ),
-			'menuargs' => array(
-				'menu_title'      => __( 'Import ASA Members', 'asamp' ),
-				'capability'      => 'manage_options',
-				'view_capability' => 'manage_options',
-			),
-		) );
-	}
-
-	/**
 	 * Adds custom fields to custom post type 'asamp_dues_payment'.
 	 *
 	 * @return void
@@ -2424,6 +2362,80 @@ class ASA_Member_Portal {
 			'id'              => $prefix . 'section_end_form',
 			'type'            => 'title',
 			'render_row_cb'   => array( $this, 'close_fieldset' ),
+		) );
+	}
+
+	/**
+	 * Adds tabs to the plugin options page.
+	 *
+	 * @return array $tabs
+	 */
+	private function options_add_tabs() {
+		$tabs = array(
+			array(
+				'id'    => 'general',
+				'title' => __( 'General', 'asamp' ),
+				'boxes' => array(
+					'registration',
+					'directory',
+					'map',
+					'pages',
+					'administration',
+				),
+			),
+			array(
+				'id'    => 'payment',
+				'title' => __( 'Payment', 'asamp' ),
+				'boxes' => array(
+					'payment_PayPal_Pro',
+					'payment_Stripe',
+				),
+			),
+			array(
+				'id'    => 'usage',
+				'title' => __( 'Usage', 'asamp' ),
+				'boxes' => array(
+					'instructions',
+				),
+			),
+		);
+		
+		return $tabs;
+	}
+
+	/**
+	 * Adds plugin options.
+	 *
+	 * @return void
+	 */
+	public function options_init() {
+		$options_key = 'asa_member_portal';
+		new Cmb2_Metatabs_Options( array(
+			'key'      => $options_key,
+			'title'    => __( 'Member Portal Settings', 'asamp' ),
+			'topmenu'  => 'options-general.php',
+			'resettxt' => ''/*__( 'Restore Defaults', 'asamp' )*/,
+			'boxes'    => $this->options_add_boxes( $options_key ),
+			'tabs'     => $this->options_add_tabs(),
+			'menuargs' => array(
+				'menu_title'      => __( 'Membership', 'asamp' ),
+				'capability'      => 'manage_options',
+				'view_capability' => 'manage_options',
+			),
+		) );
+
+		$import_members_key = 'asa_member_portal_import_members';
+		new Cmb2_Metatabs_Options( array(
+			'key'      => $import_members_key,
+			'title'    => __( 'Import ASA Members', 'asamp' ),
+			'topmenu'  => 'users.php',
+			'resettxt' => '',
+			'boxes'    => $this->import_members_add_boxes( $import_members_key ),
+			'menuargs' => array(
+				'menu_title'      => __( 'Import ASA Members', 'asamp' ),
+				'capability'      => 'manage_options',
+				'view_capability' => 'manage_options',
+			),
 		) );
 	}
 
@@ -2855,16 +2867,26 @@ class ASA_Member_Portal {
 			'new_user_section' => 'add-new-user',
 		) );
 
+		$this->build_box( $box, $fields, $this->pu );
+	}
+
+	/**
+	 * TODO write docs
+	 *
+	 * @param obj   $box CMB2 box object
+	 * @param array $fields
+	 * @param str   $key
+	 *
+	 * @return void
+	 */
+	private function build_box( $box, $fields, $key ) {
 		$box->add_hidden_field( array(
 			'field_args'  => array(
-				'id'      => $this->pu . 'nonce',
+				'id'      => $key . 'nonce',
 				'type'    => 'hidden',
-				'default' => wp_create_nonce( $this->pu . 'nonce' ),
+				'default' => wp_create_nonce( $key . 'nonce' ),
 			),
 		) );
-
-		if ( $this->is_member() ) $this->view = 'member';
-		if ( is_admin() )         $this->view = 'admin';
 
 		$group_ids = array();
 		foreach ( $fields as $id => $field ) {
@@ -2877,11 +2899,11 @@ class ASA_Member_Portal {
 						unset( $field[ 'visibility' ][ $k ] );
 					}
 				}
-				if ( ! empty( $field[ 'visibility' ] ) && ! in_array( $this->view, $field[ 'visibility' ] ) ) continue;
+				if ( ! empty( $field[ 'visibility' ] ) && ! in_array( $this->viewer(), $field[ 'visibility' ] ) ) continue;
 				//unset( $field[ 'visibility' ] );
 			}
 
-			if ( is_array( $field[ 'name' ] ) ) $field[ 'name' ] = $field[ 'name' ][ $this->view ];
+			if ( is_array( $field[ 'name' ] ) ) $field[ 'name' ] = $field[ 'name' ][ $this->viewer() ];
 
 			if ( is_string( $field[ 'options' ] ) ) $field[ 'options' ] = call_user_func( array( $this, $field[ 'options' ] ) );
 
@@ -2890,7 +2912,7 @@ class ASA_Member_Portal {
 				if ( is_string( $v ) && false !== strpos( $v, 'opt_' ) ) $field[ $k ] = $this->get_option( ltrim( $v, 'opt_' ) );
 			}
 
-			if ( 'member' === $this->view && 'password' === $field[ 'attributes' ][ 'type' ] ) unset( $field[ 'attributes' ][ 'required' ] );
+			if ( 'member' === $this->viewer() && 'password' === $field[ 'attributes' ][ 'type' ] ) unset( $field[ 'attributes' ][ 'required' ] );
 
 			if ( isset( $field[ 'parent' ] ) ) {
 				$field[ 'id' ] = $id;
@@ -2898,7 +2920,7 @@ class ASA_Member_Portal {
 				//unset( $field[ 'parent' ] );
 				$box->add_group_field( $group_ids[ $parent ], $field );
 			} else {
-				$field[ 'id' ] = $this->pu . $id;
+				$field[ 'id' ] = $key . $id;
 				$field_id = $box->add_field( $field );
 				if ( 'group' === $field[ 'type' ] ) $group_ids[ $id ] = $field_id;
 			}
@@ -3045,6 +3067,11 @@ class ASAMP_One_Time_Notices {
 		delete_option( 'asamp_one_time_notices' );
 	}
 
+}
+
+add_filter( 'asamp_user_meta_options', 'asamp_asa_specific_options' );
+function asamp_asa_specific_options( $options ) {
+	return $options;
 }
 
 add_filter( 'asamp_user_meta_fields', 'asamp_asa_specific_fields' );
