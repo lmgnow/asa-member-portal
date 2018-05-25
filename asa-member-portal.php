@@ -4,7 +4,7 @@
  * Plugin Name:       Member Portal
  * Plugin URI:        https://github.com/lmgnow/asa-member-portal
  * Description:       Front-end registration and login forms, additional user info fields for members, and member directory.
- * Version:           1.1.7
+ * Version:           1.1.8
  * Author:            Jeremy Kozan
  * Author URI:        https://www.lmgnow.com/
  * License:           MIT
@@ -21,7 +21,7 @@ use League\Csv\Writer;
 
 $asamp = new ASA_Member_Portal();
 class ASA_Member_Portal {
-	private $version          = '1.1.7';      // str             Current version.
+	private $version          = '1.1.8';      // str             Current version.
 	private $td               = 'asamp';      // str             Text Domain.
 	private $pu               = '_user_';     // str             Prefix for user meta fields.
 	private $viewer           = 'non-member'; // str             Current page viewer type.
@@ -79,6 +79,7 @@ class ASA_Member_Portal {
 		add_action( 'cmb2_init',       array( $this, 'payment_form_init'     ) );
 		add_action( 'cmb2_init',       array( $this, 'login_form_init'       ) );
 		add_action( 'cmb2_init',       array( $this, 'dues_payments_init'    ) );
+		add_action( 'cmb2_admin_init', array( $this, 'options_add_tabs'      ) );
 		add_action( 'cmb2_admin_init', array( $this, 'options_init'          ) );
 		add_action( 'cmb2_admin_init', array( $this, 'members_only_init'     ) );
 		add_action( 'cmb2_admin_init', array( $this, 'import_members'        ) );
@@ -147,7 +148,7 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function admin_enqueue( $hook ) {
-		$hooks = array( 'settings_page_asamp', 'users_page_asamp_import_members', 'user-new.php', 'profile.php' );
+		$hooks = array( 'settings_page_asamp_options', 'users_page_asamp_import_members', 'user-new.php', 'profile.php' );
 		foreach ( $hooks as $v ) {
 			if ( $v === $hook ) {
 				wp_enqueue_style(  'asamp_admin_style',  $this->plugin_dir_url . 'css/asamp-admin-style.css', array(          ), $this->version, 'screen' );
@@ -576,7 +577,6 @@ class ASA_Member_Portal {
 
 		if ( 'no' !== $this->options[ 'members_grouped_by_type' ] ) {
 			$order = $this->get_asamp_roles_select();
-			//$this->write_log( $order, 'oooorder' );
 			usort( $users, function( $a, $b ) {
 				$strcmp = strcmp( reset( $a->roles ), reset( $b->roles ) );
 				if ( 0 === $strcmp ) return 1;
@@ -2384,33 +2384,37 @@ class ASA_Member_Portal {
 	 * @return void
 	 */
 	public function options_init() {
-		new Cmb2_Metatabs_Options( array(
-			'key'      => 'asamp_options',
+		$options_pages = array();
+
+		$options_pages[ 'asamp_options' ] = array(
 			'title'    => __( 'Member Portal Settings', 'asamp' ),
 			'topmenu'  => 'options-general.php',
-			'resettxt' => '',
 			'boxes'    => $this->options_add_boxes( 'asamp_options' ),
-			'tabs'     => $this->options_add_tabs(),
+			'tabs'     => array_values( $this->options_tabs ),
 			'menuargs' => array(
-				'menu_title'      => __( 'Membership', 'asamp' ),
-				'capability'      => 'manage_options',
-				'view_capability' => 'manage_options',
+				'menu_title' => __( 'Membership', 'asamp' ),
 			),
-		) );
+		);
 
-		$import_members_key = 'asamp_import_members';
-		new Cmb2_Metatabs_Options( array(
-			'key'      => $import_members_key,
+		$options_pages[ 'asamp_import_members' ] = array(
 			'title'    => __( 'Import Members', 'asamp' ),
 			'topmenu'  => 'users.php',
-			'resettxt' => '',
-			'boxes'    => $this->import_members_add_boxes( $import_members_key ),
+			'boxes'    => $this->import_members_add_boxes( 'asamp_import_members' ),
 			'menuargs' => array(
-				'menu_title'      => __( 'Import Members', 'asamp' ),
-				'capability'      => 'manage_options',
-				'view_capability' => 'manage_options',
+				'menu_title' => __( 'Import Members', 'asamp' ),
 			),
-		) );
+		);
+
+		$options_pages = apply_filters( $this->td . '_options_pages', $options_pages );
+
+		foreach ( $options_pages as $key => $args ) {
+			$args[ 'key' ]                           = $key;
+			$args[ 'resettxt' ]                      = '';
+			$args[ 'menuargs' ][ 'capability' ]      = 'manage_options';
+			$args[ 'menuargs' ][ 'view_capability' ] = 'manage_options';
+
+			new Cmb2_Metatabs_Options( $args );
+		}
 	}
 
 	/**
@@ -2418,25 +2422,27 @@ class ASA_Member_Portal {
 	 *
 	 * @return array $tabs
 	 */
-	private function options_add_tabs() {
-		$tabs = array();
+	public function options_add_tabs() {
+		$this->options_tabs = array();
 
-		$tabs[ 'general' ] = array(
+		$this->options_tabs[ 'general' ] = array(
 			'priority' => 10,
-			'name'     => __( 'General', 'asamp' ),
+			'title'    => __( 'General', 'asamp' ),
 		);
-		$tabs[ 'payment' ] = array(
+		$this->options_tabs[ 'payment' ] = array(
 			'priority' => 20,
-			'name'     => __( 'Payment', 'asamp' ),
+			'title'    => __( 'Payment', 'asamp' ),
 		);
-		$tabs[ 'usage' ] = array(
+		$this->options_tabs[ 'usage' ] = array(
 			'priority' => 30,
-			'name'     => __( 'Usage', 'asamp' ),
+			'title'    => __( 'Usage', 'asamp' ),
 		);
 
-		$tabs = apply_filters( $this->td . '_options_tabs', $tabs );
-		
-		return $tabs;
+		$this->options_tabs = apply_filters( $this->td . '_options_tabs', $this->options_tabs );
+
+		foreach ( $this->options_tabs as $id => $tab ) {
+			$this->options_tabs[ $id ][ 'id' ] = $id;
+		}
 	}
 
 	/**
@@ -2452,7 +2458,7 @@ class ASA_Member_Portal {
 		$boxes = array();
 		
 		$boxes[ 'registration' ] = array(
-			//'priority' => 10,
+			'priority' => 10,
 			'title'    => __( 'Profile/Registration', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2545,7 +2551,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'directory' ] = array(
-			//'priority' => 20,
+			'priority' => 20,
 			'title'    => __( 'Member Directory', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2575,7 +2581,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'map' ] = array(
-			//'priority' => 30,
+			'priority' => 30,
 			'title'    => __( 'Member Map', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2611,7 +2617,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'pages' ] = array(
-			//'priority' => 40,
+			'priority' => 40,
 			'title'    => __( 'Pages', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2633,7 +2639,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'administration' ] = array(
-			//'priority' => 50,
+			'priority' => 50,
 			'title'    => __( 'Administration', 'asamp' ),
 			'tab'      => 'general',
 			'fields'   => array(
@@ -2685,7 +2691,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'payment_PayPal_Pro' ] = array(
-			//'priority' => 60,
+			'priority' => 60,
 			'title'    => __( 'PayPal Pro', 'asamp' ),
 			'tab'      => 'payment',
 			'fields'   => array(
@@ -2723,7 +2729,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'payment_Stripe' ] = array(
-			//'priority' => 70,
+			'priority' => 70,
 			'title'    => __( 'Stripe', 'asamp' ),
 			'tab'      => 'payment',
 			'fields'   => array(
@@ -2746,7 +2752,7 @@ class ASA_Member_Portal {
 		);
 
 		$boxes[ 'instructions' ] = array(
-			//'priority' => 80,
+			'priority' => 80,
 			'title'    => __( 'Usage Instructions', 'asamp' ),
 			'tab'      => 'usage',
 			'fields'   => array(
@@ -2770,11 +2776,13 @@ class ASA_Member_Portal {
 				'value' => array( $this->td . '_options' ),
 			);
 
+			unset( $box[ 'priority' ] );
+
 			$boxes[ $id ] = new_cmb2_box( $box );
 			$boxes[ $id ] = $this->add_fields( $boxes[ $id ], $box[ 'fields' ] );
 			$boxes[ $id ]->object_type( 'options-page' );
 
-			add_filter( $this->td . '_options_tabs', function(){ $tabs[ $box[ 'tab' ] ][ 'boxes' ][] = $id; } );
+			$this->options_tabs[ $box[ 'tab' ] ][ 'boxes' ][] = $id;
 		}
 		
 		return $boxes;
@@ -2885,7 +2893,6 @@ class ASA_Member_Portal {
 					}
 				}
 				if ( ! empty( $field[ 'visibility' ] ) && ! in_array( $this->viewer(), $field[ 'visibility' ] ) ) continue;
-				//unset( $field[ 'visibility' ] );
 			}
 
 			if ( is_array( $field[ 'name' ] ) ) $field[ 'name' ] = $field[ 'name' ][ $this->viewer() ];
@@ -2902,7 +2909,6 @@ class ASA_Member_Portal {
 			if ( isset( $field[ 'parent' ] ) ) {
 				$field[ 'id' ] = $id;
 				$parent = $field[ 'parent' ];
-				//unset( $field[ 'parent' ] );
 				$box->add_group_field( $group_ids[ $parent ], $field );
 			} else {
 				$field[ 'id' ] = $key . $id;
